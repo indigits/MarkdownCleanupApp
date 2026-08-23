@@ -1,0 +1,113 @@
+import type { CleanOptions, Preset, PresetName } from './types';
+
+export const DEFAULT_OPTIONS: CleanOptions = {
+  tightenLists: true,
+  convertCallouts: true,
+  fixMathDelimiters: true,
+  fixEmphasisSpacing: true,
+  fixHeadings: true,
+  collapseBlankLines: true,
+  trimTrailingSpaces: true,
+  fixTableSpacing: true,
+  fixQuoteSpacing: true,
+  normalizeTaskLists: true,
+  smartCapitalizeHeaders: false,
+};
+
+export const PRESETS: Record<PresetName, Preset> = {
+  gemini: {
+    id: 'gemini',
+    name: 'Gemini → Obsidian',
+    badge: 'Recommended for Gemini',
+    description: 'Specialized for Google Gemini chats. Tightens loose lists, fixes LaTeX \\[ \\] math blocks, fixes space in ** bold ** text, and converts AI notes to native Obsidian callouts.',
+    options: {
+      ...DEFAULT_OPTIONS,
+      tightenLists: true,
+      convertCallouts: true,
+      fixMathDelimiters: true,
+      fixEmphasisSpacing: true,
+      fixHeadings: true,
+      collapseBlankLines: true,
+      trimTrailingSpaces: true,
+      fixTableSpacing: true,
+      fixQuoteSpacing: true,
+      normalizeTaskLists: true,
+    }
+  },
+  chatgpt: {
+    id: 'chatgpt',
+    name: 'ChatGPT → Obsidian',
+    badge: 'OpenAI / GPT-4',
+    description: 'Optimized for OpenAI ChatGPT output. Removes extra list spacing, standardizes code blocks, converts bold alerts to callouts, and collapses excessive blank lines.',
+    options: {
+      ...DEFAULT_OPTIONS,
+      tightenLists: true,
+      convertCallouts: true,
+      fixMathDelimiters: true,
+      fixEmphasisSpacing: true,
+      fixHeadings: true,
+      collapseBlankLines: true,
+      trimTrailingSpaces: true,
+      fixTableSpacing: true,
+      fixQuoteSpacing: true,
+      normalizeTaskLists: true,
+    }
+  },
+  claude: {
+    id: 'claude',
+    name: 'Claude → Obsidian',
+    badge: 'Anthropic Claude',
+    description: 'Tailored for Claude markdown formatting, tightly aligning bullet lists, cleaning artifacts, and converting multi-level notes.',
+    options: {
+      ...DEFAULT_OPTIONS,
+      tightenLists: true,
+      convertCallouts: true,
+      fixMathDelimiters: true,
+      fixEmphasisSpacing: true,
+      fixHeadings: true,
+      collapseBlankLines: true,
+      trimTrailingSpaces: true,
+      fixTableSpacing: true,
+      fixQuoteSpacing: true,
+      normalizeTaskLists: true,
+    }
+  },
+  obsidian_full: {
+    id: 'obsidian_full',
+    name: 'Obsidian Power Clean',
+    badge: 'Maximum Cleanup',
+    description: 'Applies every available transformation rule for the cleanest, most idiomatic Obsidian markdown possible.',
+    options: {
+      ...DEFAULT_OPTIONS,
+      tightenLists: true,
+      convertCallouts: true,
+      fixMathDelimiters: true,
+      fixEmphasisSpacing: true,
+      fixHeadings: true,
+      collapseBlankLines: true,
+      trimTrailingSpaces: true,
+      fixTableSpacing: true,
+      fixQuoteSpacing: true,
+      normalizeTaskLists: true,
+    }
+  },
+  minimal: {
+    id: 'minimal',
+    name: 'Minimal (Lists Only)',
+    badge: 'Light Touch',
+    description: 'Only tightens loose lists and trims trailing whitespace, leaving all other formatting untouched.',
+    options: {
+      tightenLists: true,
+      convertCallouts: false,
+      fixMathDelimiters: false,
+      fixEmphasisSpacing: false,
+      fixHeadings: false,
+      collapseBlankLines: true,
+      trimTrailingSpaces: true,
+      fixTableSpacing: false,
+      fixQuoteSpacing: false,
+      normalizeTaskLists: false,
+      smartCapitalizeHeaders: false,
+    }
+  }
+};
