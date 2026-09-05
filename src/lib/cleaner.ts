@@ -1,5 +1,6 @@
 import type { CleanOptions, CleanStats } from './types';
 import { DEFAULT_OPTIONS } from './presets';
+import { convertAsciiToMermaid, isAsciiDiagram } from './diagramConverter';
 
 interface MaskedToken {
   placeholder: string;
@@ -290,19 +291,36 @@ class TokenMasker {
   private tokens: MaskedToken[] = [];
   private counter = 0;
   public tablesConverted = 0;
+  public diagramsConverted = 0;
 
-  mask(text: string, convertGridTablesEnabled = true): string {
+  mask(text: string, convertGridTablesEnabled = true, convertDiagramsEnabled = true): string {
     this.tokens = [];
     this.counter = 0;
     this.tablesConverted = 0;
+    this.diagramsConverted = 0;
 
     // 1. Process fenced code blocks: ``` ... ``` and ~~~ ... ~~~
     let masked = text.replace(/(```([\w-]*)\n([\s\S]*?)\n```|~~~([\w-]*)\n([\s\S]*?)\n~~~)/g, (fullMatch, _block, lang1, content1, lang2, content2) => {
       const lang = (lang1 || lang2 || '').trim().toLowerCase();
-      const content = (content1 !== undefined ? content1 : content2 || '').trim();
+      const rawContent = content1 !== undefined ? content1 : content2 || '';
+      const content = rawContent.replace(/^\n+/, '').replace(/\n+$/, '');
+
+      const nonCodeLangs = ['', 'text', 'plaintext', 'ascii', 'markdown', 'md', 'table', 'grid', 'diagram', 'flowchart'];
+
+      // Check if this is an ASCII Diagram inside a generic/text code block
+      if (convertDiagramsEnabled && nonCodeLangs.includes(lang)) {
+        if (isAsciiDiagram(content)) {
+          const diag = convertAsciiToMermaid(content);
+          if (diag.count > 0) {
+            this.diagramsConverted += diag.count;
+            const placeholder = `%%OB_MASKED_BLOCK_${this.counter++}%%`;
+            this.tokens.push({ placeholder, original: diag.result });
+            return placeholder;
+          }
+        }
+      }
 
       // Check if this is a table inside a code block
-      const nonCodeLangs = ['', 'text', 'plaintext', 'ascii', 'markdown', 'md', 'table', 'grid'];
       if (convertGridTablesEnabled && nonCodeLangs.includes(lang)) {
         // Check if content is a Grid Table
         const parsedGrid = parseGridTable(content.split('\n'));
@@ -319,21 +337,21 @@ class TokenMasker {
       }
 
       // Otherwise, mask as protected code block
-      const placeholder = `%%OB_MASKED_BLOCK_${this.counter++}%%`;
+      const placeholder = `%%OB-MASKED-BLOCK-${this.counter++}%%`;
       this.tokens.push({ placeholder, original: fullMatch });
       return placeholder;
     });
 
     // Handle any remaining single-line fenced blocks
     masked = masked.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g, (match) => {
-      const placeholder = `%%OB_MASKED_BLOCK_${this.counter++}%%`;
+      const placeholder = `%%OB-MASKED-BLOCK-${this.counter++}%%`;
       this.tokens.push({ placeholder, original: match });
       return placeholder;
     });
 
     // 2. Mask inline code: `...`
     masked = masked.replace(/(`[^`\n]+?`)/g, (match) => {
-      const placeholder = `%%OB_MASKED_INLINE_${this.counter++}%%`;
+      const placeholder = `%%OB-MASKED-INLINE-${this.counter++}%%`;
       this.tokens.push({ placeholder, original: match });
       return placeholder;
     });
@@ -780,6 +798,7 @@ export function cleanMarkdown(
         mathConverted: 0,
         emphasisFixed: 0,
         tablesConverted: 0,
+        diagramsConverted: 0,
         headingsNormalized: 0,
       }
     };
@@ -788,9 +807,10 @@ export function cleanMarkdown(
   const opts: CleanOptions = { ...DEFAULT_OPTIONS, ...options };
   const masker = new TokenMasker();
 
-  // 1. Mask code blocks & inline backticks (automatically unwraps tables inside code fences if convertGridTables is true)
-  let text = masker.mask(input, opts.convertGridTables);
+  // 1. Mask code blocks & inline backticks (automatically converts diagrams & tables inside generic code fences)
+  let text = masker.mask(input, opts.convertGridTables, opts.convertDiagrams);
   let tablesConverted = masker.tablesConverted;
+  let diagramsConverted = masker.diagramsConverted;
 
   let listsTightened = 0;
   let calloutsConverted = 0;
@@ -798,82 +818,103 @@ export function cleanMarkdown(
   let emphasisFixed = 0;
   let headingsNormalized = 0;
 
-  // 2. Convert unfenced ASCII/Unicode grid tables to markdown tables
+  // 2. Convert unfenced ASCII/Unicode diagrams to Mermaid flowcharts
+  if (opts.convertDiagrams) {
+    const blocks = text.split(/\n{2,}/);
+    let anyConverted = false;
+    const newBlocks = blocks.map(block => {
+      const cleanBlock = block.replace(/^\n+/, '').replace(/\n+$/, '');
+      if (isAsciiDiagram(cleanBlock)) {
+        const res = convertAsciiToMermaid(cleanBlock);
+        if (res.count > 0) {
+          diagramsConverted += res.count;
+          anyConverted = true;
+          return res.result;
+        }
+      }
+      return block;
+    });
+    if (anyConverted) {
+      text = newBlocks.join('\n\n');
+    }
+  }
+
+  // 3. Convert unfenced ASCII/Unicode grid tables to markdown tables
   if (opts.convertGridTables) {
     const res = convertGridTables(text);
     text = res.result;
     tablesConverted += res.count;
   }
 
-  // 3. Math delimiters (before callouts and emphasis)
+  // 4. Math delimiters (before callouts and emphasis)
   if (opts.fixMathDelimiters) {
     const res = fixMathDelimiters(text);
     text = res.result;
     mathConverted = res.count;
   }
 
-  // 4. Headings: formatting space & spacing
+  // 5. Headings: formatting space & spacing
   if (opts.fixHeadings) {
     text = fixHeadings(text);
   }
 
-  // 5. Enforce single H1 and strict heading hierarchy
+  // 6. Enforce single H1 and strict heading hierarchy
   if (opts.enforceSingleH1) {
     const res = enforceSingleH1(text);
     text = res.result;
     headingsNormalized = res.count;
   }
 
-  // 6. Callouts
+  // 7. Callouts
   if (opts.convertCallouts) {
     const res = convertCallouts(text);
     text = res.result;
     calloutsConverted = res.count;
   }
 
-  // 7. Emphasis spacing
+  // 8. Emphasis spacing
   if (opts.fixEmphasisSpacing) {
     const res = fixEmphasisSpacing(text);
     text = res.result;
     emphasisFixed = res.count;
   }
 
-  // 8. Tighten loose lists
+  // 9. Tighten loose lists
   if (opts.tightenLists) {
     const res = tightenLists(text);
     text = res.result;
     listsTightened = res.count;
   }
 
-  // 9. Table spacing
+  // 10. Table spacing
   if (opts.fixTableSpacing) {
     text = fixTableSpacing(text);
   }
 
-  // 10. Quote spacing
+  // 11. Quote spacing
   if (opts.fixQuoteSpacing) {
     text = fixQuoteSpacing(text);
   }
 
-  // 11. Normalize task lists
+  // 12. Normalize task lists
   if (opts.normalizeTaskLists) {
     text = normalizeTaskLists(text);
   }
 
-  // 12. Collapse blank lines
+  // 13. Collapse blank lines
   if (opts.collapseBlankLines) {
     text = collapseBlankLines(text);
   }
 
-  // 13. Trim trailing whitespace
+  // 14. Trim trailing whitespace
   if (opts.trimTrailingSpaces) {
     text = trimTrailingSpaces(text);
   }
 
-  // 14. Final trim of excessive leading/trailing empty lines of the document
+  // 15. Final trim of excessive leading/trailing empty lines of the document
   text = text.trim() + '\n';
 
-  // 15. Restore masked code blocks and inline backticks
+  // 16. Restore masked code blocks and inline backticks
   const cleaned = masker.unmask(text);
 
   // Calculate statistics
@@ -898,6 +939,7 @@ export function cleanMarkdown(
     mathConverted,
     emphasisFixed,
     tablesConverted,
+    diagramsConverted,
     headingsNormalized,
   };
 

@@ -1,9 +1,76 @@
 <script lang="ts">
+  import { onMount, tick } from 'svelte';
+  import mermaid from 'mermaid';
   import { parseMarkdownToHtml } from '../lib/parser';
 
   export let markdown: string = '';
 
   $: renderedHtml = parseMarkdownToHtml(markdown);
+
+  let renderCount = 0;
+
+  function escapeHtml(str: string): string {
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+  }
+
+  async function renderMermaidDiagrams() {
+    await tick();
+    const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
+
+    try {
+      mermaid.initialize({
+        startOnLoad: false,
+        theme: isDark ? 'dark' : 'default',
+        securityLevel: 'loose',
+        fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      });
+    } catch {}
+
+    const blocks = document.querySelectorAll<HTMLElement>('.obsidian-mermaid-block');
+    for (let idx = 0; idx < blocks.length; idx++) {
+      const block = blocks[idx];
+      const code = block.getAttribute('data-mermaid');
+      const target = block.querySelector<HTMLElement>('.obsidian-mermaid-render-target');
+      if (code && target && !block.classList.contains('rendered')) {
+        const id = `mermaid-svg-${Date.now()}-${idx}-${renderCount++}`;
+        try {
+          const { svg } = await mermaid.render(id, code);
+          target.innerHTML = svg;
+          block.classList.add('rendered');
+        } catch (err) {
+          target.innerHTML = `<pre class="mermaid-error-fallback"><code>${escapeHtml(code)}</code></pre>`;
+          block.classList.add('rendered');
+        }
+      }
+    }
+  }
+
+  $: if (renderedHtml) {
+    renderMermaidDiagrams();
+  }
+
+  onMount(() => {
+    renderMermaidDiagrams();
+
+    // Listen to theme changes to re-render diagrams with corresponding dark/light theme
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.attributeName === 'data-theme') {
+          const blocks = document.querySelectorAll<HTMLElement>('.obsidian-mermaid-block');
+          blocks.forEach(b => b.classList.remove('rendered'));
+          renderMermaidDiagrams();
+        }
+      }
+    });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+    return () => observer.disconnect();
+  });
 
   function codeCopyAction(node: HTMLElement) {
     function handleClick(event: MouseEvent) {
@@ -54,4 +121,3 @@
     </div>
   {/if}
 </div>
-

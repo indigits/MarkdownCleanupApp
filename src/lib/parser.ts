@@ -139,8 +139,34 @@ export function parseMarkdownToHtml(markdown: string): string {
       i++; // Skip closing fence
 
       const rawCode = codeLines.join('\n');
-      const highlighted = highlightCode(rawCode, lang);
       const displayLang = lang || 'text';
+
+      // Specialized Mermaid diagram rendering
+      if (lang.toLowerCase() === 'mermaid') {
+        blocks.push(`
+          <div class="obsidian-mermaid-container">
+            <div class="obsidian-mermaid-header">
+              <span class="obsidian-mermaid-tag">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+                Mermaid Diagram
+              </span>
+              <button class="obsidian-code-copy-btn" title="Copy Mermaid source" data-code="${escapeHtml(rawCode)}">
+                <svg class="copy-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy</span>
+              </button>
+            </div>
+            <div class="obsidian-mermaid-block" data-mermaid="${escapeHtml(rawCode)}">
+              <div class="obsidian-mermaid-render-target"></div>
+            </div>
+          </div>
+        `);
+        continue;
+      }
+
+      const highlighted = highlightCode(rawCode, lang);
 
       blocks.push(`
         <div class="obsidian-code-block" data-language="${escapeHtml(displayLang)}">

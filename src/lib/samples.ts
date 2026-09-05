@@ -164,7 +164,7 @@ The partial hydration dilemma is the architectural deadlock between Domain-Drive
 \`\`\`
 +----------------------------+-----------------------+---------------------+-------------------------+
 | Approach                   | Aggregate Integrity   | Query Efficiency    | Complexity Cost         |
-+----------------------------+-----------------------+---------------------+-------------------------+
+|----------------------------+-----------------------+---------------------+-------------------------|
 | Classical Repository       | High                  | Very Low            | Low                     |
 | (Full Hydration)           | (No partial state)    | (SELECT * everywhere)| (Simple abstractions)   |
 +----------------------------+-----------------------+---------------------+-------------------------+
@@ -181,6 +181,68 @@ The partial hydration dilemma is the architectural deadlock between Domain-Drive
 | (Pure Functions)           | (Explicit arguments)  | (Ad-hoc projections)| (No OOP encapsulation)  |
 +----------------------------+-----------------------+---------------------+-------------------------+
 \`\`\`
+`
+  },
+  {
+    id: 'gemini-ascii-diagrams',
+    title: 'Gemini ASCII Diagrams (Architecture & Flowcharts)',
+    source: 'Google Gemini Diagram Export',
+    markdown: `# Event-Driven Microservices Architecture
+
+Here is the high-level architecture diagram and authentication decision tree:
+
+### 1. Dual-Path CQRS Data Flow
+
+\`\`\`
+                             [ Incoming Request ]
+                                      │
+                   ┌──────────────────┴──────────────────┐
+                   ▼                                     ▼
+        [ Mutation / Command ]                 [ Read / Projection ]
+                   │                                     │
+                   ▼                                     ▼
+      ┌─────────────────────────┐           ┌─────────────────────────┐
+      │ Task-Scoped Aggregate   │           │ Direct DTO Projection   │
+      │ • Focused state         │           │ • Raw optimized SQL     │
+      │ • Enforces 1 invariant  │           │ • Index-only execution  │
+      └────────────┬────────────┘           └────────────┬────────────┘
+                   │                                     │
+                   └──────────────────┬──────────────────┘
+                                      ▼
+                        ┌───────────────────────────┐
+                        │   Single Database Table   │
+                        │    (e.g., \`merchants\`)    │
+                        └───────────────────────────┘
+\`\`\`
+
+### 2. Multi-Factor Authentication Flowchart
+
+\`\`\`
+                  ┌──────────────────┐
+                  │  Incoming User   │
+                  │  Authentication  │
+                  └────────┬─────────┘
+                           │
+                           ▼
+                  /──────────────────\\
+                 <   Is MFA Enabled?  >
+                  \\──────────────────/
+                        │      │
+                 [Yes]  │      │  [No]
+                        ▼      ▼
+             ┌────────────┐  ┌────────────┐
+             │ Verify OTP │  │ Direct     │
+             │ Challenge  │  │ Password   │
+             └─────┬──────┘  └─────┬──────┘
+                   │               │
+                   └───────┬───────┘
+                           ▼
+                  ┌──────────────────┐
+                  │ Issue JWT Token  │
+                  └──────────────────┘
+\`\`\`
+
+> **Note:** Converting these ASCII box drawings to native Mermaid flowcharts renders interactive, responsive vector diagrams directly in Obsidian.
 `
   }
 ];

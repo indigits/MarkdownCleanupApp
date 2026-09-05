@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@types/prismjs": "^1.26.6",
+    "mermaid": "^11.17.2",
     "prismjs": "^1.30.0"
   }
 }

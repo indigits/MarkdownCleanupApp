@@ -47,6 +47,7 @@
     mathConverted: 0,
     emphasisFixed: 0,
     tablesConverted: 0,
+    diagramsConverted: 0,
     headingsNormalized: 0,
   };
   let diffLines: DiffLine[] = [];
@@ -74,6 +75,7 @@
         mathConverted: 0,
         emphasisFixed: 0,
         tablesConverted: 0,
+        diagramsConverted: 0,
         headingsNormalized: 0,
       };
       diffLines = [];
@@ -161,6 +163,12 @@
         </span>
       {:else}
         <span class="stat-pill">No extra lines</span>
+      {/if}
+
+      {#if stats.diagramsConverted > 0}
+        <span class="stat-pill stat-highlight" style="background: rgba(192, 132, 252, 0.2); border-color: rgba(192, 132, 252, 0.4); color: #c084fc;" title="ASCII and Unicode diagrams converted to native Mermaid.js flowcharts">
+          {stats.diagramsConverted} {stats.diagramsConverted === 1 ? 'diagram' : 'diagrams'} &rarr; Mermaid
+        </span>
       {/if}
 
       {#if stats.listsTightened > 0}

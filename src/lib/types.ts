@@ -9,6 +9,7 @@ export interface CleanOptions {
   trimTrailingSpaces: boolean;    // Remove unnecessary trailing whitespace from lines
   fixTableSpacing: boolean;       // Remove blank lines inside tables & format borders
   convertGridTables: boolean;     // Convert ASCII and Unicode grid/box tables to Markdown tables
+  convertDiagrams: boolean;       // Convert ASCII and Unicode diagrams to Mermaid flowcharts
   fixQuoteSpacing: boolean;       // Normalize blockquote markers and consecutive quotes
   normalizeTaskLists: boolean;    // Ensure [ ] and [x] formatting is clean and standardized
   smartCapitalizeHeaders: boolean;// Keep header casing clean without breaking markdown
@@ -28,6 +29,7 @@ export interface CleanStats {
   mathConverted: number;
   emphasisFixed: number;
   tablesConverted: number;
+  diagramsConverted: number;
   headingsNormalized: number;
 }
 

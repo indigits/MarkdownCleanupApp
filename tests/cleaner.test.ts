@@ -1417,7 +1417,105 @@ describe('Unit Tests - Code Block Syntax Highlighting (PrismJS)', () => {
     expect(html).toContain('data-code="SELECT * FROM users;"');
     expect(html).toContain('<span class="token keyword">SELECT</span>');
   });
+
+  it('renders Mermaid diagrams in parseMarkdownToHtml with obsidian-mermaid-container and render target', () => {
+    const md = '```mermaid\nflowchart TD\n    a["Start"] --> b["End"]\n```';
+    const html = parseMarkdownToHtml(md);
+
+    expect(html).toContain('class="obsidian-mermaid-container"');
+    expect(html).toContain('class="obsidian-mermaid-block"');
+    expect(html).toContain('class="obsidian-mermaid-render-target"');
+    expect(html).toContain('Mermaid Diagram');
+    expect(html).toContain('data-mermaid="flowchart TD\n    a[&quot;Start&quot;] --&gt; b[&quot;End&quot;]"');
+  });
 });
+
+describe('Markdown Cleaner - Diagram Conversion Integration', () => {
+  it('converts unfenced ASCII diagrams inside a full markdown note', () => {
+    const input = [
+      '# My Architecture Note',
+      '',
+      '+--------------+     +--------------+',
+      '|  Client App  | --> | API Gateway  |',
+      '+--------------+     +--------------+',
+      '',
+      '* Bullet 1',
+      '* Bullet 2',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+
+    expect(cleaned).toContain('```mermaid');
+    expect(cleaned).toContain('flowchart LR');
+    expect(cleaned).toContain('client["Client App"]');
+    expect(cleaned).toContain('gateway["API Gateway"]');
+    expect(cleaned).toContain('client --> gateway');
+    expect(stats.diagramsConverted).toBe(1);
+  });
+
+  it('converts ASCII diagrams inside ```text or ```ascii code fences', () => {
+    const input = [
+      '# Note with Fenced Diagram',
+      '',
+      '```text',
+      '┌───────────────┐',
+      '│     Draft     │',
+      '└───────┬───────┘',
+      '        │',
+      '        ▼ (submit)',
+      '┌───────────────┐',
+      '│ Under Review  │',
+      '└───────────────┘',
+      '```',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+
+    expect(cleaned).toContain('```mermaid');
+    expect(cleaned).toContain('flowchart TD');
+    expect(cleaned).toContain('draft["Draft"]');
+    expect(cleaned).toContain('review["Under Review"]');
+    expect(cleaned).toContain('draft -->|submit| review');
+    expect(stats.diagramsConverted).toBe(1);
+  });
+
+  it('preserves code blocks and does not convert python code with box comments', () => {
+    const input = [
+      '```python',
+      'def process_orders():',
+      '    # ┌─────────────────┐',
+      '    # │ Step 1: Validate │',
+      '    # └────────┬────────┘',
+      '    #          ▼',
+      '    # ┌─────────────────┐',
+      '    # │ Step 2: Persist │',
+      '    # └─────────────────┘',
+      '    validate()',
+      '```',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+
+    expect(cleaned).toContain('```python');
+    expect(cleaned).not.toContain('```mermaid');
+    expect(stats.diagramsConverted).toBe(0);
+  });
+
+  it('respects convertDiagrams: false option in minimal preset', () => {
+    const input = [
+      '+--------------+     +--------------+',
+      '|  Client App  | --> | API Gateway  |',
+      '+--------------+     +--------------+',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input, PRESETS.minimal.options);
+
+    expect(cleaned).not.toContain('```mermaid');
+    expect(cleaned).toContain('+--------------+');
+    expect(stats.diagramsConverted).toBe(0);
+  });
+});
+
 
 
 

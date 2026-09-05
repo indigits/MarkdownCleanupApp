@@ -11,6 +11,7 @@ export const DEFAULT_OPTIONS: CleanOptions = {
   trimTrailingSpaces: true,
   fixTableSpacing: true,
   convertGridTables: true,
+  convertDiagrams: true,
   fixQuoteSpacing: true,
   normalizeTaskLists: true,
   smartCapitalizeHeaders: false,
@@ -21,7 +22,7 @@ export const PRESETS: Record<PresetName, Preset> = {
     id: 'gemini',
     name: 'Gemini → Obsidian',
     badge: 'Recommended for Gemini',
-    description: 'Specialized for Google Gemini chats. Tightens loose lists, enforces single # note title, converts ASCII/grid tables, fixes LaTeX \\[ \\] math blocks, fixes space in ** bold ** text, and converts AI notes to native Obsidian callouts.',
+    description: 'Specialized for Google Gemini chats. Tightens loose lists, enforces single # note title, converts ASCII diagrams to Mermaid, converts ASCII/grid tables, fixes LaTeX \\[ \\] math blocks, fixes space in ** bold ** text, and converts AI notes to native Obsidian callouts.',
     options: {
       ...DEFAULT_OPTIONS,
       tightenLists: true,
@@ -34,6 +35,7 @@ export const PRESETS: Record<PresetName, Preset> = {
       trimTrailingSpaces: true,
       fixTableSpacing: true,
       convertGridTables: true,
+      convertDiagrams: true,
       fixQuoteSpacing: true,
       normalizeTaskLists: true,
     }
@@ -42,7 +44,7 @@ export const PRESETS: Record<PresetName, Preset> = {
     id: 'chatgpt',
     name: 'ChatGPT → Obsidian',
     badge: 'OpenAI / GPT-4',
-    description: 'Optimized for OpenAI ChatGPT output. Removes extra list spacing, standardizes code blocks and tables, enforces single # title, converts bold alerts to callouts, and collapses excessive blank lines.',
+    description: 'Optimized for OpenAI ChatGPT output. Removes extra list spacing, converts ASCII diagrams to Mermaid flowcharts, standardizes code blocks and tables, enforces single # title, converts bold alerts to callouts, and collapses excessive blank lines.',
     options: {
       ...DEFAULT_OPTIONS,
       tightenLists: true,
@@ -55,6 +57,7 @@ export const PRESETS: Record<PresetName, Preset> = {
       trimTrailingSpaces: true,
       fixTableSpacing: true,
       convertGridTables: true,
+      convertDiagrams: true,
       fixQuoteSpacing: true,
       normalizeTaskLists: true,
     }
@@ -63,7 +66,7 @@ export const PRESETS: Record<PresetName, Preset> = {
     id: 'claude',
     name: 'Claude → Obsidian',
     badge: 'Anthropic Claude',
-    description: 'Tailored for Claude markdown formatting, tightly aligning bullet lists, converting grid tables, normalizing heading structure, cleaning artifacts, and converting multi-level notes.',
+    description: 'Tailored for Claude markdown formatting, tightly aligning bullet lists, converting ASCII diagrams to Mermaid, converting grid tables, normalizing heading structure, cleaning artifacts, and converting multi-level notes.',
     options: {
       ...DEFAULT_OPTIONS,
       tightenLists: true,
@@ -76,6 +79,7 @@ export const PRESETS: Record<PresetName, Preset> = {
       trimTrailingSpaces: true,
       fixTableSpacing: true,
       convertGridTables: true,
+      convertDiagrams: true,
       fixQuoteSpacing: true,
       normalizeTaskLists: true,
     }
@@ -84,7 +88,7 @@ export const PRESETS: Record<PresetName, Preset> = {
     id: 'obsidian_full',
     name: 'Obsidian Power Clean',
     badge: 'Maximum Cleanup',
-    description: 'Applies every available transformation rule for the cleanest, most idiomatic Obsidian markdown possible.',
+    description: 'Applies every available transformation rule including diagram and table conversions for the cleanest, most idiomatic Obsidian markdown possible.',
     options: {
       ...DEFAULT_OPTIONS,
       tightenLists: true,
@@ -97,6 +101,7 @@ export const PRESETS: Record<PresetName, Preset> = {
       trimTrailingSpaces: true,
       fixTableSpacing: true,
       convertGridTables: true,
+      convertDiagrams: true,
       fixQuoteSpacing: true,
       normalizeTaskLists: true,
     }
@@ -117,6 +122,7 @@ export const PRESETS: Record<PresetName, Preset> = {
       trimTrailingSpaces: true,
       fixTableSpacing: false,
       convertGridTables: false,
+      convertDiagrams: false,
       fixQuoteSpacing: false,
       normalizeTaskLists: false,
       smartCapitalizeHeaders: false,

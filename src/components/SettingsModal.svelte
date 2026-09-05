@@ -41,6 +41,7 @@
       trimTrailingSpaces: true,
       fixTableSpacing: true,
       convertGridTables: true,
+      convertDiagrams: true,
       fixQuoteSpacing: true,
       normalizeTaskLists: true,
     };
@@ -82,6 +83,17 @@
           </div>
           <div class="switch">
             <input type="checkbox" bind:checked={options.enforceSingleH1} on:change={() => dispatch('updateOptions', options)} />
+            <span class="slider"></span>
+          </div>
+        </label>
+
+        <label class="rule-toggle-row">
+          <div class="rule-info">
+            <span class="rule-name">Convert ASCII & Unicode Diagrams to Mermaid</span>
+            <span class="rule-desc">Translates box-and-arrow diagrams (architectures, pipelines, flowcharts, decision trees) into native Mermaid.js diagrams.</span>
+          </div>
+          <div class="switch">
+            <input type="checkbox" bind:checked={options.convertDiagrams} on:change={() => dispatch('updateOptions', options)} />
             <span class="slider"></span>
           </div>
         </label>

@@ -899,6 +899,82 @@ textarea, input, select {
   color: #d97706;
 }
 
+/* Obsidian Mermaid Diagrams */
+.obsidian-mermaid-container {
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin: 18px 0;
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-fast);
+}
+
+.obsidian-mermaid-container:hover {
+  border-color: rgba(139, 92, 246, 0.4);
+}
+
+.obsidian-mermaid-header {
+  background-color: var(--bg-tertiary);
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.obsidian-mermaid-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: #c084fc;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.obsidian-mermaid-block {
+  padding: 20px 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100px;
+  overflow-x: auto;
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+[data-theme='light'] .obsidian-mermaid-block {
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.obsidian-mermaid-render-target {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.obsidian-mermaid-render-target svg {
+  max-width: 100%;
+  height: auto;
+  filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15));
+}
+
+.mermaid-error-fallback {
+  width: 100%;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--warning);
+  background: var(--bg-tertiary);
+  padding: 12px;
+  border-radius: var(--radius-sm);
+}
+
+
+
 /* Obsidian Tables */
 .obsidian-table-wrapper {
   overflow-x: auto;
