@@ -192,10 +192,30 @@ describe('Markdown Cleaner - Bold & Italic Whitespace', () => {
     expect(result).toBe('This is *italic text* here.');
   });
 
-  it('fixes spaces inside triple asterisks *** text *** -> ***text***', () => {
-    const input = 'This is *** bold italic *** text.';
-    const { result } = fixEmphasisSpacing(input);
-    expect(result).toBe('This is ***bold italic*** text.');
+  it('preserves list item bullet with italic text and inter-word spaces', () => {
+    const input = [
+      '# Foundational Elements of the System View',
+      '',
+      'Wazlawick uses BPMN as the primary notation to map business reality prior to software requirements engineering:',
+      '',
+      '* **Pools and Lanes:** A *Pool* represents an autonomous business entity or external participant (e.g., an external enterprise, partner, or bank). A *Lane* partitions a single pool into internal roles, departments, or subsystem responsibilities.',
+      '* **Flow Types:**',
+      '* *Sequence Flows* model execution order and control strictly *within* a single pool.',
+      '* *Message Flows* (dashed lines with open circles/arrows) model asynchronous communication *between* independent pools. Sequence flows are forbidden from crossing pool boundaries.',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+    expect(cleaned).toContain('* *Sequence Flows* model execution order and control strictly *within* a single pool.');
+    expect(cleaned).toContain('* *Message Flows* (dashed lines with open circles/arrows) model asynchronous communication *between* independent pools.');
+    expect(cleaned).toContain('* **Pools and Lanes:** A *Pool* represents an autonomous business entity');
+    expect(stats.emphasisFixed).toBe(0);
+  });
+
+  it('corrects malformed emphasis while preserving punctuation and delimiters', () => {
+    const input = '"** bold in quotes **" and (* italic in parens *) and ** bold **, ** bold 2 **! ** bold 3 **?';
+    const { result, count } = fixEmphasisSpacing(input);
+    expect(result).toBe('"**bold in quotes**" and (*italic in parens*) and **bold**, **bold 2**! **bold 3**?');
+    expect(count).toBe(5);
   });
 });
 

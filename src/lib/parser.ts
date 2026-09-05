@@ -1,4 +1,5 @@
 import Prism from 'prismjs';
+import katex from 'katex';
 
 // Core dependencies and language grammars
 import 'prismjs/components/prism-clike';
@@ -49,6 +50,25 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+/**
+ * Renders a LaTeX math expression using KaTeX with graceful fallback.
+ */
+export function renderKaTeX(formula: string, displayMode: boolean): string {
+  try {
+    return katex.renderToString(formula.trim(), {
+      displayMode,
+      throwOnError: false,
+      output: 'htmlAndMathml',
+    });
+  } catch {
+    const escapedFormula = escapeHtml(formula.trim());
+    if (displayMode) {
+      return `<div class="obsidian-math-block">$$ ${escapedFormula} $$</div>`;
+    }
+    return `<span class="obsidian-inline-math">$${escapedFormula}$</span>`;
+  }
 }
 
 const LANGUAGE_ALIASES: Record<string, string> = {
@@ -190,7 +210,8 @@ export function parseMarkdownToHtml(markdown: string): string {
     if (line.trim() === '$$' || /^\$\$(.*)\$\$$/.test(line.trim())) {
       if (/^\$\$(.+)\$\$$/.test(line.trim())) {
         const formula = line.trim().slice(2, -2).trim();
-        blocks.push(`<div class="obsidian-math-block">$$ ${escapeHtml(formula)} $$</div>`);
+        const rendered = renderKaTeX(formula, true);
+        blocks.push(`<div class="obsidian-math-block">${rendered}</div>`);
         i++;
         continue;
       } else {
@@ -201,7 +222,9 @@ export function parseMarkdownToHtml(markdown: string): string {
           i++;
         }
         i++; // Skip closing $$
-        blocks.push(`<div class="obsidian-math-block">$$\n${escapeHtml(mathLines.join('\n'))}\n$$</div>`);
+        const formula = mathLines.join('\n');
+        const rendered = renderKaTeX(formula, true);
+        blocks.push(`<div class="obsidian-math-block">${rendered}</div>`);
         continue;
       }
     }
@@ -408,13 +431,25 @@ function renderListBlock(lines: string[]): string {
 export function renderInline(text: string): string {
   if (!text) return '';
 
-  let escaped = escapeHtml(text);
+  // 1. Extract and isolate inline code tokens: `code`
+  const codeTokens: string[] = [];
+  let masked = text.replace(/`([^`]+)`/g, (_match, code) => {
+    const token = `%%OBS-INLINE-CODE-${codeTokens.length}%%`;
+    codeTokens.push(`<code class="obsidian-inline-code">${escapeHtml(code)}</code>`);
+    return token;
+  });
 
-  // 1. Inline Code: `code`
-  escaped = escaped.replace(/`([^`]+)`/g, '<code class="obsidian-inline-code">$1</code>');
+  // 2. Extract and render inline math tokens with KaTeX: $math$ (e.g. $A$, $x + y$)
+  const mathTokens: string[] = [];
+  const inlineMathRegex = /\$([^\s\$\n](?:[^\$\n]*?[^\s\$\n])?)\$/g;
+  masked = masked.replace(inlineMathRegex, (_match, formula) => {
+    const token = `%%OBS-INLINE-MATH-${mathTokens.length}%%`;
+    const rendered = renderKaTeX(formula, false);
+    mathTokens.push(rendered);
+    return token;
+  });
 
-  // 2. Inline Math: $math$
-  escaped = escaped.replace(/\$([^\$\n]+)\$/g, '<span class="obsidian-inline-math">$$1</span>');
+  let escaped = escapeHtml(masked);
 
   // 3. Bold + Italic: ***text*** or ___text___
   escaped = escaped.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
@@ -441,6 +476,14 @@ export function renderInline(text: string): string {
 
   // 9. Obsidian Tags: #tag (must have whitespace or start before it)
   escaped = escaped.replace(/(^|\s)#([a-zA-Z0-9_\-\/]+)(?=\s|$)/g, '$1<span class="obsidian-tag">#$2</span>');
+
+  // 10. Restore code and math tokens safely
+  for (let i = 0; i < codeTokens.length; i++) {
+    escaped = escaped.replace(`%%OBS-INLINE-CODE-${i}%%`, () => codeTokens[i]);
+  }
+  for (let i = 0; i < mathTokens.length; i++) {
+    escaped = escaped.replace(`%%OBS-INLINE-MATH-${i}%%`, () => mathTokens[i]);
+  }
 
   return escaped;
 }

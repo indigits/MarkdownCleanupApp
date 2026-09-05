@@ -23,7 +23,9 @@
     "vitest": "^3.2.7"
   },
   "dependencies": {
+    "@types/katex": "^0.16.8",
     "@types/prismjs": "^1.26.6",
+    "katex": "^0.18.5",
     "mermaid": "^11.17.2",
     "prismjs": "^1.30.0"
   }

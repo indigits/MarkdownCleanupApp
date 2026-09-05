@@ -562,47 +562,52 @@ export function fixEmphasisSpacing(text: string): { result: string; count: numbe
   let totalCount = 0;
   let result = text;
 
+  // We ensure that delimiters are flanking content and bounded by start of line, whitespace, or punctuation/brackets.
+  // This prevents stripping valid inter-phrase whitespace (e.g. `*Sequence Flows* model ... strictly *within*`).
+  const startPunct = '(?:^|[\\s(\\[{<"\'\u201c\u2018])';
+  const endPunct = '(?=[\\s)\\]}>"\'\u201d\u2019,.;:!?]|$)';
+
   // 1. Triple asterisks *** text ***
-  result = result.replace(/\*\*\*([ \t]*)([^\n*]+?)([ \t]*)\*\*\*/g, (match, leading, content, trailing) => {
+  result = result.replace(new RegExp(`(${startPunct})\\*\\*\\*([ \\t]*)([^\\n*]+?)([ \\t]*)\\*\\*\\*${endPunct}`, 'g'), (match, prefix, leading, content, trailing) => {
     if (leading.length > 0 || trailing.length > 0) {
       totalCount++;
-      return `***${content.trim()}***`;
+      return `${prefix}***${content.trim()}***`;
     }
     return match;
   });
 
   // 2. Double asterisks ** text **
-  result = result.replace(/\*\*([ \t]*)([^\n*]+?)([ \t]*)\*\*/g, (match, leading, content, trailing) => {
+  result = result.replace(new RegExp(`(${startPunct})\\*\\*([ \\t]*)([^\\n*]+?)([ \\t]*)\\*\\*${endPunct}`, 'g'), (match, prefix, leading, content, trailing) => {
     if (leading.length > 0 || trailing.length > 0) {
       totalCount++;
-      return `**${content.trim()}**`;
+      return `${prefix}**${content.trim()}**`;
     }
     return match;
   });
 
   // 3. Double underscores __ text __
-  result = result.replace(/__([ \t]*)([^\n_]+?)([ \t]*)__/g, (match, leading, content, trailing) => {
+  result = result.replace(new RegExp(`(${startPunct})__([ \\t]*)([^\\n_]+?)([ \\t]*)__${endPunct}`, 'g'), (match, prefix, leading, content, trailing) => {
     if (leading.length > 0 || trailing.length > 0) {
       totalCount++;
-      return `__${content.trim()}__`;
+      return `${prefix}__${content.trim()}__`;
     }
     return match;
   });
 
   // 4. Single asterisks * text *
-  result = result.replace(/(?<!\*)\*([ \t]*)([^\n*]+?)([ \t]*)\*(?!\*)/g, (match, leading, content, trailing) => {
+  result = result.replace(new RegExp(`(${startPunct})\\*(?!\\*)([ \\t]*)([^\\n*]+?)([ \\t]*)\\*(?!\\*)${endPunct}`, 'g'), (match, prefix, leading, content, trailing) => {
     if (leading.length > 0 || trailing.length > 0) {
       totalCount++;
-      return `*${content.trim()}*`;
+      return `${prefix}*${content.trim()}*`;
     }
     return match;
   });
 
   // 5. Single underscores _ text _
-  result = result.replace(/(?<!_)_([ \t]*)([^\n_]+?)([ \t]*)_(?!_)/g, (match, leading, content, trailing) => {
+  result = result.replace(new RegExp(`(${startPunct})_(?!_)([ \\t]*)([^\\n_]+?)([ \\t]*)_(?!_)${endPunct}`, 'g'), (match, prefix, leading, content, trailing) => {
     if (leading.length > 0 || trailing.length > 0) {
       totalCount++;
-      return `_${content.trim()}_`;
+      return `${prefix}_${content.trim()}_`;
     }
     return match;
   });
