@@ -1,12 +1,44 @@
+import Prism from 'prismjs';
+
+// Core dependencies and language grammars
+import 'prismjs/components/prism-clike';
+import 'prismjs/components/prism-javascript';
+import 'prismjs/components/prism-typescript';
+import 'prismjs/components/prism-jsx';
+import 'prismjs/components/prism-tsx';
+import 'prismjs/components/prism-sql';
+import 'prismjs/components/prism-python';
+import 'prismjs/components/prism-go';
+import 'prismjs/components/prism-rust';
+import 'prismjs/components/prism-bash';
+import 'prismjs/components/prism-json';
+import 'prismjs/components/prism-yaml';
+import 'prismjs/components/prism-css';
+import 'prismjs/components/prism-markup'; // HTML / XML / SVG
+import 'prismjs/components/prism-c';
+import 'prismjs/components/prism-cpp';
+import 'prismjs/components/prism-csharp';
+import 'prismjs/components/prism-java';
+import 'prismjs/components/prism-markdown';
+import 'prismjs/components/prism-diff';
+import 'prismjs/components/prism-docker';
+import 'prismjs/components/prism-graphql';
+import 'prismjs/components/prism-toml';
+import 'prismjs/components/prism-ini';
+import 'prismjs/components/prism-regex';
+import 'prismjs/components/prism-ruby';
+import 'prismjs/components/prism-kotlin';
+import 'prismjs/components/prism-swift';
+
 /**
- * Pure frontend zero-dependency Obsidian Markdown Parser & HTML Renderer.
+ * Pure frontend Obsidian Markdown Parser & HTML Renderer with PrismJS Syntax Highlighting.
  * Emulates Obsidian's Reading View with native support for:
  * - Obsidian Callouts ([!note], [!tip], [!warning], [!important], [!info], [!example], etc.)
  * - Math blocks ($$...$$ and $...$)
  * - Task list checkboxes (- [ ], - [x])
  * - Tight and nested lists
  * - Markdown tables
- * - Code blocks with copy actions
+ * - Code blocks with full syntax highlighting & copy actions
  * - Obsidian wikilinks [[Page|Title]] and tags #tag
  */
 
@@ -17,6 +49,52 @@ function escapeHtml(str: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+}
+
+const LANGUAGE_ALIASES: Record<string, string> = {
+  js: 'javascript',
+  ts: 'typescript',
+  py: 'python',
+  python3: 'python',
+  sh: 'bash',
+  zsh: 'bash',
+  shell: 'bash',
+  golang: 'go',
+  rs: 'rust',
+  yml: 'yaml',
+  html: 'markup',
+  xml: 'markup',
+  svg: 'markup',
+  md: 'markdown',
+  cs: 'csharp',
+  'c++': 'cpp',
+  postgres: 'sql',
+  postgresql: 'sql',
+  mysql: 'sql',
+  sqlite: 'sql',
+  rb: 'ruby',
+  kt: 'kotlin',
+  dockerfile: 'docker',
+  gql: 'graphql',
+};
+
+/**
+ * Highlights a snippet of source code using PrismJS grammars.
+ */
+export function highlightCode(code: string, language: string): string {
+  const cleanLang = (language || '').trim().toLowerCase();
+  const normalized = LANGUAGE_ALIASES[cleanLang] || cleanLang;
+  const grammar = Prism.languages[normalized];
+
+  if (grammar) {
+    try {
+      return Prism.highlight(code, grammar, normalized);
+    } catch {
+      return escapeHtml(code);
+    }
+  }
+
+  return escapeHtml(code);
 }
 
 const CALLOUT_ICONS: Record<string, string> = {
@@ -60,13 +138,23 @@ export function parseMarkdownToHtml(markdown: string): string {
       }
       i++; // Skip closing fence
 
-      const escapedCode = escapeHtml(codeLines.join('\n'));
+      const rawCode = codeLines.join('\n');
+      const highlighted = highlightCode(rawCode, lang);
+      const displayLang = lang || 'text';
+
       blocks.push(`
-        <div class="obsidian-code-block">
+        <div class="obsidian-code-block" data-language="${escapeHtml(displayLang)}">
           <div class="obsidian-code-header">
-            <span class="obsidian-code-lang">${escapeHtml(lang || 'code')}</span>
+            <span class="obsidian-code-lang">${escapeHtml(displayLang)}</span>
+            <button class="obsidian-code-copy-btn" title="Copy code" data-code="${escapeHtml(rawCode)}">
+              <svg class="copy-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy</span>
+            </button>
           </div>
-          <pre><code class="language-${escapeHtml(lang)}">${escapedCode}</code></pre>
+          <pre><code class="language-${escapeHtml(displayLang)}">${highlighted}</code></pre>
         </div>
       `);
       continue;
@@ -160,19 +248,41 @@ export function parseMarkdownToHtml(markdown: string): string {
       }
 
       if (tableLines.length >= 2) {
-        const headerRow = tableLines[0].split('|').slice(1, -1).map(c => c.trim());
+        const splitRow = (rowStr: string) => {
+          const placeholder = '%%ESCAPED_PIPE_TOKEN%%';
+          const safe = rowStr.replace(/\\\|/g, placeholder);
+          return safe
+            .split('|')
+            .slice(1, -1)
+            .map(c => c.replace(new RegExp(placeholder, 'g'), '|').trim());
+        };
+
+        const headerRow = splitRow(tableLines[0]);
         // tableLines[1] is separator row |---|---|
-        const bodyRows = tableLines.slice(2).map(row => row.split('|').slice(1, -1).map(c => c.trim()));
+        const separatorCells = splitRow(tableLines[1]);
+        const alignments = separatorCells.map(cell => {
+          const trimmed = cell.trim();
+          if (trimmed.startsWith(':') && trimmed.endsWith(':')) return 'center';
+          if (trimmed.endsWith(':')) return 'right';
+          if (trimmed.startsWith(':')) return 'left';
+          return 'left';
+        });
+
+        const bodyRows = tableLines.slice(2).map(row => splitRow(row));
 
         let tableHtml = '<div class="obsidian-table-wrapper"><table class="obsidian-table"><thead><tr>';
-        for (const h of headerRow) {
-          tableHtml += `<th>${renderInline(h)}</th>`;
+        for (let hIdx = 0; hIdx < headerRow.length; hIdx++) {
+          const h = headerRow[hIdx];
+          const align = alignments[hIdx] || 'left';
+          tableHtml += `<th style="text-align: ${align}">${renderInline(h)}</th>`;
         }
         tableHtml += '</tr></thead><tbody>';
         for (const row of bodyRows) {
           tableHtml += '<tr>';
-          for (const cell of row) {
-            tableHtml += `<td>${renderInline(cell)}</td>`;
+          for (let cIdx = 0; cIdx < headerRow.length; cIdx++) {
+            const cell = row[cIdx] !== undefined ? row[cIdx] : '';
+            const align = alignments[cIdx] || 'left';
+            tableHtml += `<td style="text-align: ${align}">${renderInline(cell)}</td>`;
           }
           tableHtml += '</tr>';
         }

@@ -36,9 +36,11 @@
       fixMathDelimiters: true,
       fixEmphasisSpacing: true,
       fixHeadings: true,
+      enforceSingleH1: true,
       collapseBlankLines: true,
       trimTrailingSpaces: true,
       fixTableSpacing: true,
+      convertGridTables: true,
       fixQuoteSpacing: true,
       normalizeTaskLists: true,
     };
@@ -69,6 +71,28 @@
           </div>
           <div class="switch">
             <input type="checkbox" bind:checked={options.tightenLists} on:change={() => dispatch('updateOptions', options)} />
+            <span class="slider"></span>
+          </div>
+        </label>
+
+        <label class="rule-toggle-row">
+          <div class="rule-info">
+            <span class="rule-name">Enforce Single H1 (# Title)</span>
+            <span class="rule-desc">Ensures at most one top-level <code>#</code> title in note; demotes subsequent <code>#</code> to subheadings (<code>##</code>, <code>###</code>).</span>
+          </div>
+          <div class="switch">
+            <input type="checkbox" bind:checked={options.enforceSingleH1} on:change={() => dispatch('updateOptions', options)} />
+            <span class="slider"></span>
+          </div>
+        </label>
+
+        <label class="rule-toggle-row">
+          <div class="rule-info">
+            <span class="rule-name">Convert Grid & ASCII Tables to Markdown</span>
+            <span class="rule-desc">Converts ASCII <code>+---+</code> and Unicode box tables (including multi-line cells) into standard Markdown tables.</span>
+          </div>
+          <div class="switch">
+            <input type="checkbox" bind:checked={options.convertGridTables} on:change={() => dispatch('updateOptions', options)} />
             <span class="slider"></span>
           </div>
         </label>

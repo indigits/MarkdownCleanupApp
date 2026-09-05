@@ -6,14 +6,21 @@ import {
   convertCallouts,
   fixEmphasisSpacing,
   fixHeadings,
+  enforceSingleH1,
   collapseBlankLines,
   trimTrailingSpaces,
   fixTableSpacing,
   isListItemLine,
+  isGridBorderLine,
+  extractColIndices,
+  isGridContentLine,
+  isMarkdownPipeTable,
+  parseGridTable,
+  convertGridTables,
 } from '../src/lib/cleaner';
 import { PRESETS } from '../src/lib/presets';
 import { computeLineDiff } from '../src/lib/diff';
-import { parseMarkdownToHtml, renderInline } from '../src/lib/parser';
+import { parseMarkdownToHtml, renderInline, highlightCode } from '../src/lib/parser';
 
 describe('Markdown Cleaner - List Tightening (Gemini Loose Lists)', () => {
   it('identifies list item lines correctly', () => {
@@ -371,4 +378,1047 @@ describe('Extended Edge Cases & Complex Scenarios', () => {
     expect(duration).toBeLessThan(100); // Super fast pure regex pipeline
   });
 });
+
+describe('Markdown Cleaner - Grid & ASCII Table Conversion', () => {
+  it('converts the Architectural Trade-Off Matrix from Gemini into a markdown table', () => {
+    const input = [
+      '# Architectural Trade-Off Matrix',
+      '',
+      '```',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| Approach                   | Aggregate Integrity   | Query Efficiency    | Complexity Cost         |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| Classical Repository       | High                  | Very Low            | Low                     |',
+      '| (Full Hydration)           | (No partial state)    | (SELECT * everywhere)| (Simple abstractions)   |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| CQRS Separation            | High                  | High                | Medium                  |',
+      '| (Bypass for Reads)         | (Entities for writes) | (Targeted DTO reads)| (Two data paths)        |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| Aggregate Decomposition    | High                  | High                | Medium                  |',
+      '| (Shared Table Pattern)     | (Fully valid models)  | (Narrow projections)| (Multiple entity models)|',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| Task-Specific Commands     | High                  | High                | Medium                  |',
+      '| (Narrow Command Models)    | (Scoped invariants)   | (Single-row slices) | (Granular repositories) |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| Functional Transition      | High                  | Maximum             | Low/Medium              |',
+      '| (Pure Functions)           | (Explicit arguments)  | (Ad-hoc projections)| (No OOP encapsulation)  |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '```',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+
+    expect(cleaned).toContain('| Approach | Aggregate Integrity | Query Efficiency | Complexity Cost |');
+    expect(cleaned).toContain('| --- | --- | --- | --- |');
+    expect(cleaned).toContain('| Classical Repository (Full Hydration) | High (No partial state) | Very Low (SELECT * everywhere) | Low (Simple abstractions) |');
+    expect(cleaned).toContain('| CQRS Separation (Bypass for Reads) | High (Entities for writes) | High (Targeted DTO reads) | Medium (Two data paths) |');
+    expect(cleaned).toContain('| Aggregate Decomposition (Shared Table Pattern) | High (Fully valid models) | High (Narrow projections) | Medium (Multiple entity models) |');
+    expect(cleaned).toContain('| Task-Specific Commands (Narrow Command Models) | High (Scoped invariants) | High (Single-row slices) | Medium (Granular repositories) |');
+    expect(cleaned).toContain('| Functional Transition (Pure Functions) | High (Explicit arguments) | Maximum (Ad-hoc projections) | Low/Medium (No OOP encapsulation) |');
+    expect(cleaned).not.toContain('+----------------------------+');
+    expect(stats.tablesConverted).toBe(1);
+  });
+
+  it('converts multi-line wrapped cells in Failure Modes table accurately', () => {
+    const input = [
+      '```',
+      '+--------------------------+-------------------------------------------------------------+',
+      '| Naive Workaround         | Failure Mechanism                                           |',
+      '+--------------------------+-------------------------------------------------------------+',
+      '| Nullable Domain Fields   | Fields not fetched are set to null. Methods must guess      |',
+      '|                          | whether an attribute is genuinely null or simply omitted,   |',
+      '|                          | destroying the entity\'s ability to protect invariants.      |',
+      '+--------------------------+-------------------------------------------------------------+',
+      '| Dynamic Proxies &        | Property getters trigger secondary database queries on      |',
+      '| Lazy-Loading             | access. This creates hidden I/O within domain logic, N+1    |',
+      '|                          | query cascades, and breaks offline unit testability.       |',
+      '+--------------------------+-------------------------------------------------------------+',
+      '```',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+
+    expect(cleaned).toContain('| Naive Workaround | Failure Mechanism |');
+    expect(cleaned).toContain('| Nullable Domain Fields | Fields not fetched are set to null. Methods must guess whether an attribute is genuinely null or simply omitted, destroying the entity\'s ability to protect invariants. |');
+    expect(cleaned).toContain('| Dynamic Proxies & Lazy-Loading | Property getters trigger secondary database queries on access. This creates hidden I/O within domain logic, N+1 query cascades, and breaks offline unit testability. |');
+    expect(stats.tablesConverted).toBe(1);
+  });
+
+  it('converts Unicode box drawing tables (single and double lines)', () => {
+    const singleUnicode = [
+      '┌───────────┬────────────┐',
+      '│ Language  │ Type       │',
+      '├───────────┼────────────┤',
+      '│ Svelte    │ Frontend   │',
+      '│ Go        │ Backend    │',
+      '└───────────┴────────────┘',
+    ].join('\n');
+
+    const doubleUnicode = [
+      '╔═══════════╦════════════╗',
+      '║ Language  ║ Type       ║',
+      '╠═══════════╬════════════╣',
+      '║ Rust      ║ Systems    ║',
+      '╚═══════════╩════════════╝',
+    ].join('\n');
+
+    const resSingle = cleanMarkdown(singleUnicode);
+    expect(resSingle.cleaned).toContain('| Language | Type |\n| --- | --- |\n| Svelte | Frontend |\n| Go | Backend |');
+
+    const resDouble = cleanMarkdown(doubleUnicode);
+    expect(resDouble.cleaned).toContain('| Language | Type |\n| --- | --- |\n| Rust | Systems |');
+  });
+
+  it('converts grid tables with = header divider', () => {
+    const input = [
+      '+-----------+------------+',
+      '| Metric    | Value      |',
+      '+===========+============+',
+      '| Speed     | Fast       |',
+      '+-----------+------------+',
+    ].join('\n');
+
+    const { cleaned } = cleanMarkdown(input);
+    expect(cleaned).toContain('| Metric | Value |\n| --- | --- |\n| Speed | Fast |');
+  });
+
+  it('preserves ASCII diagrams without converting them to broken tables', () => {
+    const diagram = [
+      '```',
+      '       ┌────────────────────────────────────────────────────────┐',
+      '       │                 THE ARCHITECTURAL TENSION              │',
+      '       └───────────────────────────┬────────────────────────────┘',
+      '                                   │',
+      '         ┌─────────────────────────┴─────────────────────────┐',
+      '         ▼                                                   ▼',
+      '┌─────────────────────────────────┐       ┌─────────────────────────────────┐',
+      '│       Domain Invariants         │       │       Storage Efficiency        │',
+      '│ • Complete internal state       │  vs.  │ • Selective column projection   │',
+      '│ • No undefined/null traps       │       │ • Index-Only scans (B-Tree)     │',
+      '│ • Enforces business rules       │       │ • Minimal I/O and wire transfer │',
+      '└─────────────────────────────────┘       └─────────────────────────────────┘',
+      '```',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(diagram);
+    expect(cleaned).toContain('THE ARCHITECTURAL TENSION');
+    expect(cleaned).toContain('Storage Efficiency');
+    expect(cleaned).toContain('```');
+    expect(stats.tablesConverted).toBe(0);
+  });
+
+  it('cleans the full user prompt document with both tables converted and diagrams/code preserved', () => {
+    const userDoc = [
+      '# The Partial Hydration Dilemma',
+      '',
+      'The partial hydration dilemma is the architectural deadlock between Domain-Driven Design\'s mandate for **aggregate integrity** and the relational database\'s requirement for **access-path efficiency**.',
+      '',
+      '```',
+      '       ┌────────────────────────────────────────────────────────┐',
+      '       │                 THE ARCHITECTURAL TENSION              │',
+      '       └───────────────────────────┬────────────────────────────┘',
+      '                                   │',
+      '         ┌─────────────────────────┴─────────────────────────┐',
+      '         ▼                                                   ▼',
+      '┌─────────────────────────────────┐       ┌─────────────────────────────────┐',
+      '│       Domain Invariants         │       │       Storage Efficiency        │',
+      '└─────────────────────────────────┘       └─────────────────────────────────┘',
+      '```',
+      '',
+      '# The Failure Modes of Naive Solutions',
+      '',
+      '```',
+      '+--------------------------+-------------------------------------------------------------+',
+      '| Naive Workaround         | Failure Mechanism                                           |',
+      '+--------------------------+-------------------------------------------------------------+',
+      '| Nullable Domain Fields   | Fields not fetched are set to null. Methods must guess      |',
+      '|                          | whether an attribute is genuinely null or simply omitted.   |',
+      '+--------------------------+-------------------------------------------------------------+',
+      '```',
+      '',
+      '```sql',
+      'SELECT id, name FROM merchants WHERE status = 1;',
+      '```',
+      '',
+      '# Architectural Trade-Off Matrix',
+      '',
+      '```',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| Approach                   | Aggregate Integrity   | Query Efficiency    | Complexity Cost         |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| Classical Repository       | High                  | Very Low            | Low                     |',
+      '| (Full Hydration)           | (No partial state)    | (SELECT * everywhere)| (Simple abstractions)   |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '| CQRS Separation            | High                  | High                | Medium                  |',
+      '| (Bypass for Reads)         | (Entities for writes) | (Targeted DTO reads)| (Two data paths)        |',
+      '+----------------------------+-----------------------+---------------------+-------------------------+',
+      '```',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(userDoc);
+
+    // Both tables converted
+    expect(stats.tablesConverted).toBe(2);
+    expect(cleaned).toContain('| Naive Workaround | Failure Mechanism |');
+    expect(cleaned).toContain('| Nullable Domain Fields | Fields not fetched are set to null. Methods must guess whether an attribute is genuinely null or simply omitted. |');
+    expect(cleaned).toContain('| Approach | Aggregate Integrity | Query Efficiency | Complexity Cost |');
+    expect(cleaned).toContain('| Classical Repository (Full Hydration) | High (No partial state) | Very Low (SELECT * everywhere) | Low (Simple abstractions) |');
+
+    // Diagram preserved in code block
+    expect(cleaned).toContain('THE ARCHITECTURAL TENSION');
+    expect(cleaned).toContain('Domain Invariants');
+
+    // SQL code block preserved
+    expect(cleaned).toContain('```sql\nSELECT id, name FROM merchants WHERE status = 1;\n```');
+  });
+
+  it('correctly processes the complete partial hydration dilemma markdown verbatim', () => {
+    const verbatimInput = `# The Partial Hydration Dilemma
+
+The partial hydration dilemma is the architectural deadlock between Domain-Driven Design's mandate for **aggregate integrity** and the relational database's requirement for **access-path efficiency**.
+
+Classical Clean Architecture treats the database as an emulation of an in-memory collection (\`Repository<T>\`), where calling \`repository.get_by_id(id)\` yields a fully realized, invariant-protecting Entity. In high-throughput, data-intensive systems, fulfilling that contract forces \`SELECT *\` queries that cripple database performance. Conversely, fetching only the columns required for a specific business task results in partially initialized entities, degrading strong domain models into unpredictable, bug-prone structures.
+
+\`\`\`
+       ┌────────────────────────────────────────────────────────┐
+       │                 THE ARCHITECTURAL TENSION              │
+       └───────────────────────────┬────────────────────────────┘
+                                   │
+         ┌─────────────────────────┴─────────────────────────┐
+         ▼                                                   ▼
+┌─────────────────────────────────┐       ┌─────────────────────────────────┐
+│       Domain Invariants         │       │       Storage Efficiency        │
+│ • Complete internal state       │  vs.  │ • Selective column projection   │
+│ • No undefined/null traps       │       │ • Index-Only scans (B-Tree)     │
+│ • Enforces business rules       │       │ • Minimal I/O and wire transfer │
+└─────────────────────────────────┘       └─────────────────────────────────┘
+
+\`\`\`
+
+---
+
+# Why Full Hydration Kills Database Performance
+
+Defaulting to full entity retrieval to satisfy repository purity introduces severe operational penalties at the database engine level.
+
+### Heap Lookups vs. Index-Only Scans
+
+When a query targets a subset of columns covered by a secondary B-Tree index (e.g., \`status\`, \`balance\`, \`tenant_id\`), the storage engine resolves the query entirely within memory via an **Index-Only Scan**.
+
+Issuing \`SELECT *\` forces the engine to perform random I/O heap fetches for table pages to retrieve the remaining 30+ columns, destroying cache locality and saturating storage buffer pools.
+
+### TOAST and Out-of-Line Storage Overhead
+
+Relational engines like PostgreSQL use secondary storage mechanisms (TOAST—The Oversized-Attribute Storage Technique) for large values such as text fields, JSONB blobs, or audit arrays exceeding a 2KB threshold.
+
+A \`SELECT *\` forces decompression and disk assembly of TOAST chunks even if the executing business rule only inspects a numeric balance or a single enum state.
+
+### Serialization, Memory, and Garbage Collection
+
+Transferring 40 attributes across the wire instead of 3 increases:
+
+* Network socket buffer utilization between application servers and the database instance.
+* CPU serialization/deserialization overhead on both sides.
+* Managed runtime allocations (Java/CLR/V8), which increases heap fragmentation and garbage collection pressure under sustained throughput.
+
+### The Lost-Update Hazard in Full-Row Saves
+
+ORMs and repositories that fully hydrate entities typically persist state by issuing a blind write across all fields:
+
+\`\`\`sql
+UPDATE merchants 
+SET legal_name = $1, address = $2, status = $3, daily_limit = $4, ... 
+WHERE id = $5;
+
+\`\`\`
+
+If Thread A hydrates a merchant to update \`daily_limit\` while Thread B concurrently updates \`address\`, Thread A's subsequent save will silently overwrite Thread B's update unless complex, wide optimistic locking strategies monitor every column.
+
+---
+
+# The Failure Modes of Naive Solutions
+
+Teams often attempt to patch this dilemma using compromises that introduce architectural rot.
+
+\`\`\`
++--------------------------+-------------------------------------------------------------+
+| Naive Workaround         | Failure Mechanism                                           |
++--------------------------+-------------------------------------------------------------+
+| Nullable Domain Fields   | Fields not fetched are set to null. Methods must guess      |
+|                          | whether an attribute is genuinely null or simply omitted,   |
+|                          | destroying the entity's ability to protect invariants.      |
++--------------------------+-------------------------------------------------------------+
+| Dynamic Proxies &        | Property getters trigger secondary database queries on      |
+| Lazy-Loading             | access. This creates hidden I/O within domain logic, N+1    |
+|                          | query cascades, and breaks offline unit testability.       |
++--------------------------+-------------------------------------------------------------+
+| Specific "Hydrated"      | Creating PartialMerchant, BasicMerchant, and FullMerchant  |
+| Variations               | causes an exponential explosion of classes with duplicate   |
+|                          | business logic and unclear responsibilities.               |
++--------------------------+-------------------------------------------------------------+
+
+\`\`\`
+
+---
+
+# Modern Architectural Resolutions
+
+Resolving the partial hydration dilemma requires rejecting the premise that a database table must map 1:1 to a single domain aggregate.
+
+\`\`\`
+                             [ Incoming Request ]
+                                      │
+                   ┌──────────────────┴──────────────────┐
+                   ▼                                     ▼
+        [ Mutation / Command ]                 [ Read / Projection ]
+                   │                                     │
+                   ▼                                     ▼
+      ┌─────────────────────────┐           ┌─────────────────────────┐
+      │ Task-Scoped Aggregate   │           │ Direct DTO Projection   │
+      │ • Focused state         │           │ • Raw optimized SQL     │
+      │ • Enforces 1 invariant  │           │ • Index-only execution  │
+      └────────────┬────────────┘           └────────────┬────────────┘
+                   │                                     │
+                   └──────────────────┬──────────────────┘
+                                      ▼
+                        ┌───────────────────────────┐
+                        │   Single Database Table   │
+                        │    (e.g., \`merchants\`)    │
+                        └───────────────────────────┘
+
+\`\`\`
+
+### 1. CQRS (Command Query Responsibility Segregation)
+
+The vast majority of partial hydration issues stem from using entities for read, search, or display operations. Read workflows have no invariants to protect; they only display state.
+
+* **The Rule:** Domain entities and repositories are used exclusively for write-side business invariants.
+* **The Implementation:** Read operations bypass domain entities and repositories entirely. They query the database using raw SQL, query builders, or lightweight micro-ORMs (e.g., Dapper, sqlx), projecting directly into flat Read DTOs.
+
+\`\`\`sql
+-- Read-side projection: zero entity hydration, pure index-only scan
+SELECT id, business_name, settlement_currency 
+FROM merchants 
+WHERE region = $1 AND status = 'ACTIVE';
+
+\`\`\`
+
+### 2. Aggregate Decomposition Across a Shared Table
+
+A wide database table with 40 columns usually reflects a failure of bounded context isolation. A physical database table can back multiple, distinct aggregates without requiring schema decomposition.
+
+Instead of a monolithic \`Merchant\` aggregate, split the model based on business capabilities:
+
+\`\`\`
+                  ┌─────────────────────────────────────┐
+                  │          \`merchants\` Table          │
+                  │ (Identity, KYC, Billing, Addresses) │
+                  └──────────────────┬──────────────────┘
+                                     │
+        ┌────────────────────────────┼────────────────────────────┐
+        ▼                            ▼                            ▼
+┌───────────────────┐      ┌────────────────────┐      ┌───────────────────┐
+│ MerchantRiskState │      │  MerchantPayout    │      │  MerchantProfile  │
+│ Aggregate         │      │  Aggregate         │      │  Aggregate        │
+│ • status          │      │  • bank_account_id │      │  • legal_name     │
+│ • risk_score      │      │  • payout_schedule │      │  • contact_email  │
+│ • held_reason     │      │  • auto_sweep      │      │  • dba_name       │
+└───────────────────┘      └────────────────────┘      └───────────────────┘
+ (Loads 3 columns)          (Loads 3 columns)           (Loads 3 columns)
+
+\`\`\`
+
+Each aggregate is 100% complete and fully hydrated within its own operational boundary, but its repository queries only the 3 or 4 columns relevant to its operational context.
+
+### 3. Task-Specific Command Models
+
+When an operation represents a discrete state transition, create a repository method and aggregate dedicated strictly to that command.
+
+\`\`\`typescript
+// Command Model: Completely hydrated for this single business rule
+export class MerchantSuspensionContext {
+  constructor(
+    public readonly id: string,
+    private _isSuspended: boolean,
+    public readonly version: number
+  ) {}
+
+  suspend(reason: string): void {
+    if (this._isSuspended) {
+      throw new Error("Merchant is already suspended.");
+    }
+    this._isSuspended = true;
+  }
+}
+
+// Repository exposes a narrow contract
+export interface MerchantSuspensionRepository {
+  getForSuspension(id: string): Promise<MerchantSuspensionContext>;
+  saveSuspension(aggregate: MerchantSuspensionContext): Promise<void>;
+}
+
+\`\`\`
+
+The underlying adapter issues a targeted select and an atomic update:
+
+\`\`\`sql
+-- Fetch only the invariant state
+SELECT id, is_suspended, version 
+FROM merchants 
+WHERE id = $1;
+
+-- Write atomic delta update with optimistic concurrency
+UPDATE merchants 
+SET is_suspended = TRUE, 
+    version = version + 1 
+WHERE id = $1 AND version = $2;
+
+\`\`\`
+
+### 4. Functional State Transitions (Decoupled State and Behavior)
+
+In high-performance runtimes (Go, Rust), the object-oriented aggregate pattern can be replaced with pure functional domain validation.
+
+Instead of an aggregate object holding state, the domain policy is defined as a pure function that takes only the primitive values required to evaluate the invariant:
+
+\`\`\`go
+// Pure domain rule - zero database or object graph awareness
+func CanDisburseFunds(status MerchantStatus, balanceCents int64, dailyLimitCents int64, amountCents int64) error {
+    if status != StatusActive {
+        return ErrMerchantNotActive
+    }
+    if balanceCents < amountCents {
+        return ErrInsufficientFunds
+    }
+    if amountCents > dailyLimitCents {
+        return ErrDailyLimitExceeded
+    }
+    return nil
+}
+
+\`\`\`
+
+The application service handles data retrieval and persistence:
+
+\`\`\`go
+// Application Service retrieves only the 3 specific columns
+row := db.QueryRow(ctx, "SELECT status, balance_cents, daily_limit_cents FROM merchants WHERE id = $1", id)
+row.Scan(&status, &balance, &dailyLimit)
+
+// Execute pure business invariant
+if err := CanDisburseFunds(status, balance, dailyLimit, requestedAmount); err != nil {
+    return err
+}
+
+// Persist single-column mutation
+_, err := db.Exec(ctx, "UPDATE merchants SET balance_cents = balance_cents - $1 WHERE id = $2", requestedAmount, id)
+
+\`\`\`
+
+This pattern eliminates the aggregate class entirely, allowing SQL queries to remain minimal while business invariants remain deterministic and testable.
+
+---
+
+# Architectural Trade-Off Matrix
+
+\`\`\`
++----------------------------+-----------------------+---------------------+-------------------------+
+| Approach                   | Aggregate Integrity   | Query Efficiency    | Complexity Cost         |
++----------------------------+-----------------------+---------------------+-------------------------+
+| Classical Repository       | High                  | Very Low            | Low                     |
+| (Full Hydration)           | (No partial state)    | (SELECT * everywhere)| (Simple abstractions)   |
++----------------------------+-----------------------+---------------------+-------------------------+
+| CQRS Separation            | High                  | High                | Medium                  |
+| (Bypass for Reads)         | (Entities for writes) | (Targeted DTO reads)| (Two data paths)        |
++----------------------------+-----------------------+---------------------+-------------------------+
+| Aggregate Decomposition    | High                  | High                | Medium                  |
+| (Shared Table Pattern)     | (Fully valid models)  | (Narrow projections)| (Multiple entity models)|
++----------------------------+-----------------------+---------------------+-------------------------+
+| Task-Specific Commands     | High                  | High                | Medium                  |
+| (Narrow Command Models)    | (Scoped invariants)   | (Single-row slices) | (Granular repositories) |
++----------------------------+-----------------------+---------------------+-------------------------+
+| Functional Transition      | High                  | Maximum             | Low/Medium              |
+| (Pure Functions)           | (Explicit arguments)  | (Ad-hoc projections)| (No OOP encapsulation)  |
++----------------------------+-----------------------+---------------------+-------------------------+
+
+\`\`\`
+
+The partial hydration dilemma is not an unavoidable database limitation; it is an artifact of treating the database as an object store and designing wide, single-table aggregates. The tension disappears when reads are routed through dedicated CQRS projections and write-side aggregates are decomposed around specific business capabilities rather than physical table boundaries.`;
+
+    const { cleaned, stats } = cleanMarkdown(verbatimInput, PRESETS.gemini.options);
+
+    // Both tables converted
+    expect(stats.tablesConverted).toBe(2);
+
+    // Subsequent # headings converted to ## (enforceSingleH1)
+    expect(stats.headingsNormalized).toBe(4);
+    expect(cleaned).toContain('# The Partial Hydration Dilemma');
+    expect(cleaned).toContain('## Why Full Hydration Kills Database Performance');
+    expect(cleaned).toContain('## The Failure Modes of Naive Solutions');
+    expect(cleaned).toContain('## Modern Architectural Resolutions');
+    expect(cleaned).toContain('## Architectural Trade-Off Matrix');
+
+    // Naive Workaround table converted to pipe table
+    expect(cleaned).toContain('| Naive Workaround | Failure Mechanism |');
+    expect(cleaned).toContain('| Nullable Domain Fields | Fields not fetched are set to null. Methods must guess whether an attribute is genuinely null or simply omitted, destroying the entity\'s ability to protect invariants. |');
+    expect(cleaned).toContain('| Dynamic Proxies & Lazy-Loading | Property getters trigger secondary database queries on access. This creates hidden I/O within domain logic, N+1 query cascades, and breaks offline unit testability. |');
+    expect(cleaned).toContain('| Specific "Hydrated" Variations | Creating PartialMerchant, BasicMerchant, and FullMerchant causes an exponential explosion of classes with duplicate business logic and unclear responsibilities. |');
+
+    // Trade-off Matrix table converted to pipe table
+    expect(cleaned).toContain('| Approach | Aggregate Integrity | Query Efficiency | Complexity Cost |');
+    expect(cleaned).toContain('| Classical Repository (Full Hydration) | High (No partial state) | Very Low (SELECT * everywhere) | Low (Simple abstractions) |');
+    expect(cleaned).toContain('| CQRS Separation (Bypass for Reads) | High (Entities for writes) | High (Targeted DTO reads) | Medium (Two data paths) |');
+    expect(cleaned).toContain('| Aggregate Decomposition (Shared Table Pattern) | High (Fully valid models) | High (Narrow projections) | Medium (Multiple entity models) |');
+    expect(cleaned).toContain('| Task-Specific Commands (Narrow Command Models) | High (Scoped invariants) | High (Single-row slices) | Medium (Granular repositories) |');
+    expect(cleaned).toContain('| Functional Transition (Pure Functions) | High (Explicit arguments) | Maximum (Ad-hoc projections) | Low/Medium (No OOP encapsulation) |');
+
+    // All code blocks and diagrams preserved
+    expect(cleaned).toContain('THE ARCHITECTURAL TENSION');
+    expect(cleaned).toContain('Incoming Request');
+    expect(cleaned).toContain('`merchants` Table');
+    expect(cleaned).toContain('```sql\nUPDATE merchants');
+    expect(cleaned).toContain('```typescript\n// Command Model:');
+    expect(cleaned).toContain('```go\n// Pure domain rule');
+  });
+});
+
+describe('Unit Tests - Grid Table Detection Helpers', () => {
+  it('detects ASCII border lines correctly with isGridBorderLine', () => {
+    expect(isGridBorderLine('+---+---+')).toBe(true);
+    expect(isGridBorderLine('+--------------------+--------------------+')).toBe(true);
+    expect(isGridBorderLine('+====================+====================+')).toBe(true);
+    expect(isGridBorderLine('  +---+---+  ')).toBe(true);
+
+    // Invalid borders
+    expect(isGridBorderLine('++++')).toBe(false);
+    expect(isGridBorderLine('----')).toBe(false);
+    expect(isGridBorderLine('|---|---|')).toBe(false);
+    expect(isGridBorderLine('+')).toBe(false);
+    expect(isGridBorderLine('')).toBe(false);
+    expect(isGridBorderLine('Hello + World +')).toBe(false);
+  });
+
+  it('detects Unicode box border lines correctly with isGridBorderLine', () => {
+    // Single line borders
+    expect(isGridBorderLine('┌───┬───┐')).toBe(true);
+    expect(isGridBorderLine('├───┼───┤')).toBe(true);
+    expect(isGridBorderLine('└───┴───┘')).toBe(true);
+
+    // Double line borders
+    expect(isGridBorderLine('╔═══╦═══╗')).toBe(true);
+    expect(isGridBorderLine('╠═══╬═══╣')).toBe(true);
+    expect(isGridBorderLine('╚═══╩═══╝')).toBe(true);
+
+    // Rounded borders
+    expect(isGridBorderLine('╭───┬───╮')).toBe(true);
+    expect(isGridBorderLine('╰───┴───╯')).toBe(true);
+
+    // Mixed borders
+    expect(isGridBorderLine('╟───╫───╢')).toBe(true);
+    expect(isGridBorderLine('╞═══╪═══╡')).toBe(true);
+  });
+
+  it('extracts column indices accurately with extractColIndices', () => {
+    const indices1 = extractColIndices('+-----+-----+-----+');
+    expect(indices1).toEqual([0, 6, 12, 18]);
+
+    const indices2 = extractColIndices('┌────────┬────────┐');
+    expect(indices2).toEqual([0, 9, 18]);
+
+    const indices3 = extractColIndices('+--+');
+    expect(indices3).toEqual([0, 3]);
+  });
+
+  it('identifies grid content lines with isGridContentLine', () => {
+    expect(isGridContentLine('| Col 1 | Col 2 |')).toBe(true);
+    expect(isGridContentLine('  | Col 1 | Col 2 |  ')).toBe(true);
+    expect(isGridContentLine('│ Col 1 │ Col 2 │')).toBe(true);
+    expect(isGridContentLine('║ Col 1 ║ Col 2 ║')).toBe(true);
+
+    // Invalid content lines
+    expect(isGridContentLine('| Missing closing')).toBe(false);
+    expect(isGridContentLine('Missing opening |')).toBe(false);
+    expect(isGridContentLine('Col 1 | Col 2')).toBe(false);
+    expect(isGridContentLine('||')).toBe(false);
+    expect(isGridContentLine('')).toBe(false);
+    expect(isGridContentLine('Regular paragraph text')).toBe(false);
+  });
+
+  it('identifies markdown pipe tables with isMarkdownPipeTable', () => {
+    const validTable = '| Header 1 | Header 2 |\n|---|---|\n| Data 1 | Data 2 |';
+    expect(isMarkdownPipeTable(validTable)).toBe(true);
+
+    const alignedTable = '| Col 1 | Col 2 |\n| :--- | ---: |\n| A | B |';
+    expect(isMarkdownPipeTable(alignedTable)).toBe(true);
+
+    const noOuterPipes = 'Col 1 | Col 2\n---|---\nVal 1 | Val 2';
+    expect(isMarkdownPipeTable(noOuterPipes)).toBe(true);
+
+    const singleLine = '| Header 1 | Header 2 |';
+    expect(isMarkdownPipeTable(singleLine)).toBe(false);
+
+    const pythonCode = 'def add(a, b):\n    return a | b';
+    expect(isMarkdownPipeTable(pythonCode)).toBe(false);
+  });
+});
+
+describe('Unit Tests - parseGridTable & Edge Cases', () => {
+  it('parses a simple 2x2 ASCII table', () => {
+    const input = [
+      '+-------+-------+',
+      '| Name  | Role  |',
+      '+-------+-------+',
+      '| Alice | Admin |',
+      '| Bob   | User  |',
+      '+-------+-------+',
+    ];
+
+    const result = parseGridTable(input);
+    expect(result).toBe('| Name | Role |\n| --- | --- |\n| Alice | Admin |\n| Bob | User |');
+  });
+
+  it('parses a 1-column grid table', () => {
+    const input = [
+      '+--------------+',
+      '| Todo Item    |',
+      '+--------------+',
+      '| Buy groceries|',
+      '| Read paper   |',
+      '+--------------+',
+    ];
+
+    const result = parseGridTable(input);
+    expect(result).toBe('| Todo Item |\n| --- |\n| Buy groceries |\n| Read paper |');
+  });
+
+  it('handles empty cells gracefully in grid tables', () => {
+    const input = [
+      '+-------+-------+',
+      '| Col A | Col B |',
+      '+-------+-------+',
+      '|       | Val B |',
+      '| Val A |       |',
+      '+-------+-------+',
+    ];
+
+    const result = parseGridTable(input);
+    expect(result).toBe('| Col A | Col B |\n| --- | --- |\n|  | Val B |\n| Val A |  |');
+  });
+
+  it('escapes unescaped pipes inside cell content', () => {
+    const input = [
+      '+-------------+-------------+',
+      '| Operation   | Example     |',
+      '+-------------+-------------+',
+      '| Bitwise OR  | a | b = c   |',
+      '+-------------+-------------+',
+    ];
+
+    const result = parseGridTable(input);
+    expect(result).toContain('a \\| b = c');
+  });
+
+  it('handles leading indentation in grid tables', () => {
+    const input = [
+      '  +-------+-------+',
+      '  | Key   | Value |',
+      '  +-------+-------+',
+      '  | Port  | 8080  |',
+      '  +-------+-------+',
+    ];
+
+    const result = parseGridTable(input);
+    expect(result).toBe('| Key | Value |\n| --- | --- |\n| Port | 8080 |');
+  });
+
+  it('returns null for invalid grid tables with non-grid lines in between', () => {
+    const broken = [
+      '+-------+-------+',
+      '| Key   | Value |',
+      'This line breaks the grid table format',
+      '| Port  | 8080  |',
+      '+-------+-------+',
+    ];
+
+    expect(parseGridTable(broken)).toBeNull();
+  });
+
+  it('returns null for incomplete tables with fewer than 3 lines', () => {
+    expect(parseGridTable(['+---+', '| A |'])).toBeNull();
+    expect(parseGridTable([])).toBeNull();
+  });
+});
+
+describe('Unit Tests - Code Block Table Unwrapping vs Code Preservation', () => {
+  it('unwraps grid tables inside ```text, ```ascii, ```table, ```markdown', () => {
+    const langs = ['text', 'ascii', 'table', 'markdown', 'md', 'plaintext', ''];
+
+    for (const lang of langs) {
+      const input = [
+        `\`\`\`${lang}`,
+        '+-------+-------+',
+        '| Key   | Value |',
+        '+-------+-------+',
+        '| Host  | Local |',
+        '+-------+-------+',
+        '```',
+      ].join('\n');
+
+      const { cleaned, stats } = cleanMarkdown(input);
+      expect(cleaned).toContain('| Key | Value |\n| --- | --- |\n| Host | Local |');
+      expect(cleaned).not.toContain('```');
+      expect(stats.tablesConverted).toBe(1);
+    }
+  });
+
+  it('unwraps raw pipe tables inside code blocks without language tag', () => {
+    const input = [
+      '```',
+      '| Name | Status |',
+      '|---|---|',
+      '| Server 1 | Online |',
+      '| Server 2 | Offline |',
+      '```',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+    expect(cleaned).toContain('| Name | Status |\n|---|---|\n| Server 1 | Online |\n| Server 2 | Offline |');
+    expect(cleaned).not.toContain('```');
+    expect(stats.tablesConverted).toBe(1);
+  });
+
+  it('strictly preserves programming code blocks even if they contain table-like characters', () => {
+    const codeSnippets = [
+      {
+        lang: 'python',
+        code: 'def grid():\n    # +---+---+\n    return "+---+---+"'
+      },
+      {
+        lang: 'json',
+        code: '{\n  "table": "+---+---+"\n}'
+      },
+      {
+        lang: 'typescript',
+        code: 'const bitwise = (a: number, b: number) => a | b;'
+      },
+      {
+        lang: 'bash',
+        code: 'echo "+---+---+" | grep "+"'
+      }
+    ];
+
+    for (const { lang, code } of codeSnippets) {
+      const input = `\`\`\`${lang}\n${code}\n\`\`\``;
+      const { cleaned, stats } = cleanMarkdown(input);
+      expect(cleaned).toContain(`\`\`\`${lang}\n${code}\n\`\`\``);
+      expect(stats.tablesConverted).toBe(0);
+    }
+  });
+});
+
+describe('Unit Tests - Preset Options and convertGridTables Toggle', () => {
+  it('preserves grid tables untouched when convertGridTables is disabled (e.g. Minimal Preset)', () => {
+    const input = [
+      '+-------+-------+',
+      '| Key   | Value |',
+      '+-------+-------+',
+      '| Port  | 8080  |',
+      '+-------+-------+',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input, PRESETS.minimal.options);
+    expect(cleaned).toContain('+-------+-------+');
+    expect(stats.tablesConverted).toBe(0);
+  });
+
+  it('converts grid tables when convertGridTables is enabled across standard presets', () => {
+    const input = [
+      '+-------+-------+',
+      '| Key   | Value |',
+      '+-------+-------+',
+      '| Port  | 8080  |',
+      '+-------+-------+',
+    ].join('\n');
+
+    const geminiRes = cleanMarkdown(input, PRESETS.gemini.options);
+    const chatgptRes = cleanMarkdown(input, PRESETS.chatgpt.options);
+    const claudeRes = cleanMarkdown(input, PRESETS.claude.options);
+    const obsidianRes = cleanMarkdown(input, PRESETS.obsidian_full.options);
+
+    expect(geminiRes.cleaned).toContain('| Key | Value |\n| --- | --- |\n| Port | 8080 |');
+    expect(chatgptRes.cleaned).toContain('| Key | Value |\n| --- | --- |\n| Port | 8080 |');
+    expect(claudeRes.cleaned).toContain('| Key | Value |\n| --- | --- |\n| Port | 8080 |');
+    expect(obsidianRes.cleaned).toContain('| Key | Value |\n| --- | --- |\n| Port | 8080 |');
+  });
+});
+
+describe('Unit Tests - Obsidian HTML Table Rendering (parser.ts)', () => {
+  it('renders table HTML with column alignments (:---, :---:, ---:)', () => {
+    const md = [
+      '| Left Column | Center Column | Right Column |',
+      '| :--- | :---: | ---: |',
+      '| Text Left | Text Center | $100.00 |',
+    ].join('\n');
+
+    const html = parseMarkdownToHtml(md);
+    expect(html).toContain('<table class="obsidian-table">');
+    expect(html).toContain('text-align: left');
+    expect(html).toContain('text-align: center');
+    expect(html).toContain('text-align: right');
+    expect(html).toContain('Text Left');
+    expect(html).toContain('Text Center');
+    expect(html).toContain('$100.00');
+  });
+
+  it('renders tables with escaped pipes without splitting columns on escaped pipes', () => {
+    const md = [
+      '| Command | Description |',
+      '| --- | --- |',
+      '| `grep \\| wc` | Pipes output to word count |',
+    ].join('\n');
+
+    const html = parseMarkdownToHtml(md);
+    expect(html).toContain('<table class="obsidian-table">');
+    expect(html).toContain('grep | wc');
+    expect(html).toContain('Pipes output to word count');
+  });
+});
+
+describe('Unit Tests - Enforce Single H1 (#) Heading Structure', () => {
+  it('retains the first # as note title and demotes subsequent # to ##', () => {
+    const input = [
+      '# Document Title',
+      'Introduction paragraph.',
+      '',
+      '# Architecture Overview',
+      'Details on architecture.',
+      '',
+      '# Implementation Strategy',
+      'Details on implementation.',
+    ].join('\n');
+
+    const { result, count } = enforceSingleH1(input);
+
+    expect(count).toBe(2);
+    expect(result).toBe([
+      '# Document Title',
+      'Introduction paragraph.',
+      '',
+      '## Architecture Overview',
+      'Details on architecture.',
+      '',
+      '## Implementation Strategy',
+      'Details on implementation.',
+    ].join('\n'));
+  });
+
+  it('shifts child headings proportionally when a demoted section has ## children', () => {
+    const input = [
+      '# My Note',
+      'Intro paragraph.',
+      '',
+      '# Section One',
+      '## Subsection A',
+      '### Sub-subsection A1',
+      '## Subsection B',
+      '',
+      '# Section Two',
+      '## Subsection C',
+    ].join('\n');
+
+    const { result, count } = enforceSingleH1(input);
+
+    // Section One demoted (1), Subsection A (+1), Sub-subsection A1 (+1), Subsection B (+1), Section Two (1), Subsection C (+1) = 6
+    expect(count).toBe(6);
+    expect(result).toBe([
+      '# My Note',
+      'Intro paragraph.',
+      '',
+      '## Section One',
+      '### Subsection A',
+      '#### Sub-subsection A1',
+      '### Subsection B',
+      '',
+      '## Section Two',
+      '### Subsection C',
+    ].join('\n'));
+  });
+
+  it('preserves child headings when they are already ### (typical Gemini skipping H2)', () => {
+    const input = [
+      '# Root Note Title',
+      '',
+      '# Why Full Hydration Kills Database Performance',
+      'Defaulting to full entity retrieval causes penalties.',
+      '',
+      '### Heap Lookups vs. Index-Only Scans',
+      'When a query targets secondary B-Tree...',
+      '',
+      '### TOAST and Out-of-Line Storage Overhead',
+      'Relational engines like PostgreSQL use TOAST...',
+    ].join('\n');
+
+    const { result, count } = enforceSingleH1(input);
+
+    expect(count).toBe(1); // Only the subsequent H1 was demoted to H2
+    expect(result).toContain('# Root Note Title');
+    expect(result).toContain('## Why Full Hydration Kills Database Performance');
+    expect(result).toContain('### Heap Lookups vs. Index-Only Scans');
+    expect(result).toContain('### TOAST and Out-of-Line Storage Overhead');
+  });
+
+  it('does nothing when the document has only a single # heading', () => {
+    const input = [
+      '# Single Document Title',
+      'Intro paragraph.',
+      '## Section A',
+      '### Subsection A.1',
+      '## Section B',
+    ].join('\n');
+
+    const { result, count } = enforceSingleH1(input);
+    expect(count).toBe(0);
+    expect(result).toBe(input);
+  });
+
+  it('does nothing when the document has no # headings at all', () => {
+    const input = [
+      '## Section First',
+      '### Subsection',
+      'Paragraph text.',
+    ].join('\n');
+
+    const { result, count } = enforceSingleH1(input);
+    expect(count).toBe(0);
+    expect(result).toBe(input);
+  });
+
+  it('never touches # inside fenced code blocks or comments', () => {
+    const input = [
+      '# Main Title',
+      '',
+      '```python',
+      '# Python comment heading lookalike',
+      'def compute():',
+      '    # another comment',
+      '    pass',
+      '```',
+      '',
+      '# Subsequent Section',
+      'Some text.',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+
+    expect(cleaned).toContain('# Python comment heading lookalike');
+    expect(cleaned).toContain('# another comment');
+    expect(cleaned).toContain('## Subsequent Section');
+    expect(stats.headingsNormalized).toBe(1);
+  });
+
+  it('caps heading levels at ###### (H6) without producing invalid #######', () => {
+    const input = [
+      '# Note Title',
+      '# Demoted Section',
+      '## Child 2',
+      '###### Deepest Child 6',
+    ].join('\n');
+
+    const { result } = enforceSingleH1(input);
+    expect(result).toContain('## Demoted Section');
+    expect(result).toContain('### Child 2');
+    expect(result).toContain('###### Deepest Child 6');
+    expect(result).not.toContain('#######');
+  });
+
+  it('respects enforceSingleH1 toggle in CleanOptions and Presets', () => {
+    const input = [
+      '# Note 1',
+      '',
+      '# Note 2',
+    ].join('\n');
+
+    const withOption = cleanMarkdown(input, { enforceSingleH1: true });
+    expect(withOption.cleaned).toBe('# Note 1\n\n## Note 2\n');
+    expect(withOption.stats.headingsNormalized).toBe(1);
+
+    const withoutOption = cleanMarkdown(input, { enforceSingleH1: false });
+    expect(withoutOption.cleaned).toBe('# Note 1\n\n# Note 2\n');
+    expect(withoutOption.stats.headingsNormalized).toBe(0);
+
+    // Verify presets
+    expect(cleanMarkdown(input, PRESETS.gemini.options).cleaned).toContain('## Note 2');
+    expect(cleanMarkdown(input, PRESETS.chatgpt.options).cleaned).toContain('## Note 2');
+    expect(cleanMarkdown(input, PRESETS.claude.options).cleaned).toContain('## Note 2');
+    expect(cleanMarkdown(input, PRESETS.obsidian_full.options).cleaned).toContain('## Note 2');
+    expect(cleanMarkdown(input, PRESETS.minimal.options).cleaned).toContain('# Note 2');
+  });
+});
+
+describe('Unit Tests - Code Block Syntax Highlighting (PrismJS)', () => {
+  it('highlights SQL keywords, strings, and operators', () => {
+    const sqlCode = "SELECT id, name FROM merchants WHERE status = 'ACTIVE';";
+    const highlighted = highlightCode(sqlCode, 'sql');
+
+    expect(highlighted).toContain('<span class="token keyword">SELECT</span>');
+    expect(highlighted).toContain('<span class="token keyword">FROM</span>');
+    expect(highlighted).toContain('<span class="token keyword">WHERE</span>');
+    expect(highlighted).toContain('<span class="token string">\'ACTIVE\'</span>');
+  });
+
+  it('highlights Python code including comments, functions, and keywords', () => {
+    const pythonCode = "def calculate_total(price, tax):\n    # Calculate grand total\n    return price * (1 + tax)";
+    const highlighted = highlightCode(pythonCode, 'python');
+
+    expect(highlighted).toContain('<span class="token keyword">def</span>');
+    expect(highlighted).toContain('<span class="token function">calculate_total</span>');
+    expect(highlighted).toContain('<span class="token comment"># Calculate grand total</span>');
+    expect(highlighted).toContain('<span class="token keyword">return</span>');
+  });
+
+  it('highlights TypeScript / JavaScript with types, keywords, and strings', () => {
+    const tsCode = 'const greeting: string = "Hello Obsidian";';
+    const highlighted = highlightCode(tsCode, 'typescript');
+
+    expect(highlighted).toContain('<span class="token keyword">const</span>');
+    expect(highlighted).toContain('<span class="token string">"Hello Obsidian"</span>');
+  });
+
+  it('highlights Go code including types, keywords, and built-ins', () => {
+    const goCode = 'func CanDisburse(status int) error {\n    return nil\n}';
+    const highlighted = highlightCode(goCode, 'go');
+
+    expect(highlighted).toContain('<span class="token keyword">func</span>');
+    expect(highlighted).toContain('<span class="token function">CanDisburse</span>');
+    expect(highlighted).toContain('<span class="token keyword">return</span>');
+    expect(highlighted).toContain('<span class="token boolean">nil</span>');
+  });
+
+  it('handles language aliases like py, ts, js, sh, yml correctly', () => {
+    expect(highlightCode('const a = 1;', 'ts')).toContain('<span class="token keyword">const</span>');
+    expect(highlightCode('echo "hi"', 'sh')).toContain('<span class="token builtin class-name">echo</span>');
+    expect(highlightCode('import os', 'py')).toContain('<span class="token keyword">import</span>');
+  });
+
+  it('falls back to escaped HTML for unknown languages or plain text', () => {
+    const plain = 'Plain text <without> crash';
+    const highlighted = highlightCode(plain, 'unknown-lang');
+    expect(highlighted).toBe('Plain text &lt;without&gt; crash');
+  });
+
+  it('renders code block in parseMarkdownToHtml with language badge and copy button', () => {
+    const md = '```sql\nSELECT * FROM users;\n```';
+    const html = parseMarkdownToHtml(md);
+
+    expect(html).toContain('class="obsidian-code-block"');
+    expect(html).toContain('data-language="sql"');
+    expect(html).toContain('<span class="obsidian-code-lang">sql</span>');
+    expect(html).toContain('class="obsidian-code-copy-btn"');
+    expect(html).toContain('data-code="SELECT * FROM users;"');
+    expect(html).toContain('<span class="token keyword">SELECT</span>');
+  });
+});
+
+
+
 

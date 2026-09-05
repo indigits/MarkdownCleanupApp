@@ -46,6 +46,8 @@
     calloutsConverted: 0,
     mathConverted: 0,
     emphasisFixed: 0,
+    tablesConverted: 0,
+    headingsNormalized: 0,
   };
   let diffLines: DiffLine[] = [];
 
@@ -71,6 +73,8 @@
         calloutsConverted: 0,
         mathConverted: 0,
         emphasisFixed: 0,
+        tablesConverted: 0,
+        headingsNormalized: 0,
       };
       diffLines = [];
     }
@@ -165,6 +169,12 @@
         </span>
       {/if}
 
+      {#if stats.tablesConverted > 0}
+        <span class="stat-pill stat-highlight" title="ASCII/Grid tables converted to clean Markdown tables">
+          {stats.tablesConverted} {stats.tablesConverted === 1 ? 'table' : 'tables'} formatted
+        </span>
+      {/if}
+
       {#if stats.calloutsConverted > 0}
         <span class="stat-pill" title="AI notes converted to Obsidian callouts">
           {stats.calloutsConverted} {stats.calloutsConverted === 1 ? 'callout' : 'callouts'}
@@ -180,6 +190,12 @@
       {#if stats.emphasisFixed > 0}
         <span class="stat-pill" title="Bold/italic whitespace fixed">
           {stats.emphasisFixed} bold tokens fixed
+        </span>
+      {/if}
+
+      {#if stats.headingsNormalized > 0}
+        <span class="stat-pill stat-highlight" title="Subsequent # Headings converted to ## subheadings">
+          {stats.headingsNormalized} {stats.headingsNormalized === 1 ? 'heading' : 'headings'} structured
         </span>
       {/if}
     </div>

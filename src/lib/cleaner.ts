@@ -7,19 +7,325 @@ interface MaskedToken {
 }
 
 /**
+ * Detects whether a line is a horizontal grid border line.
+ * Matches ASCII: +---+---+ or +===+===+
+ * Matches Unicode box drawing: ┌───┬───┐, ├───┼───┤, └───┴───┘, ╔═══╦═══╗, ╠═══╬═══╣, ╚═══╩═══╝, etc.
+ */
+export function isGridBorderLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length < 3) return false;
+
+  // ASCII border: +---+---+ or +===+===+
+  if (/^\+[-=+]+\+$/.test(trimmed)) {
+    return trimmed.includes('-') || trimmed.includes('=');
+  }
+
+  // Unicode border:
+  const startChars = '┌╔╭├╠╟╞└╚╰';
+  const endChars = '┐╗╮┤╣╢╡┘╝╯';
+  const validChars = /^[┌╔╭├╠╟╞└╚╰][─═┬╦╤╥┼╬╫╪┴╩╧╨┐╗╮┤╣╢╡┘╝╯\s]+$/;
+
+  if (startChars.includes(trimmed[0]) && endChars.includes(trimmed[trimmed.length - 1])) {
+    return validChars.test(trimmed) && (trimmed.includes('─') || trimmed.includes('═'));
+  }
+
+  return false;
+}
+
+/**
+ * Extracts column split indices from a border line.
+ */
+export function extractColIndices(borderLine: string): number[] {
+  const indices: number[] = [];
+  const junctionChars = '+┌┬┐├┼┤└┴┘╔╦╗╠╬╣╚╩╝╭╮╰╯╟╫╢╞╪╡╤╥╧╨';
+  for (let i = 0; i < borderLine.length; i++) {
+    if (junctionChars.includes(borderLine[i])) {
+      indices.push(i);
+    }
+  }
+  return indices;
+}
+
+/**
+ * Detects whether a line is a grid table content line (starts and ends with vertical divider).
+ */
+export function isGridContentLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (trimmed.length < 3) return false;
+  const isAscii = trimmed.startsWith('|') && trimmed.endsWith('|');
+  const isUnicode =
+    (trimmed.startsWith('│') && trimmed.endsWith('│')) ||
+    (trimmed.startsWith('║') && trimmed.endsWith('║'));
+  return isAscii || isUnicode;
+}
+
+/**
+ * Checks if text is a standard markdown pipe table.
+ */
+export function isMarkdownPipeTable(text: string): boolean {
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length < 2) return false;
+  if (!lines[0].includes('|')) return false;
+  if (!/^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(lines[1])) return false;
+  for (const line of lines) {
+    if (!line.includes('|')) return false;
+  }
+  return true;
+}
+
+/**
+ * Parses an array of lines into a formatted Markdown pipe table.
+ * Returns null if the block does not conform to a valid grid table.
+ */
+export function parseGridTable(lines: string[]): string | null {
+  if (lines.length < 3) return null;
+  const topBorder = lines[0];
+  if (!isGridBorderLine(topBorder)) return null;
+
+  const colIndices = extractColIndices(topBorder);
+  if (colIndices.length < 2) return null;
+  const numCols = colIndices.length - 1;
+
+  // Find all border line indices
+  const borderIdxs: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (isGridBorderLine(lines[i])) {
+      borderIdxs.push(i);
+    } else if (!isGridContentLine(lines[i])) {
+      return null;
+    }
+  }
+
+  // Must have at least top border and bottom border
+  if (borderIdxs.length < 2 || borderIdxs[0] !== 0 || borderIdxs[borderIdxs.length - 1] !== lines.length - 1) {
+    return null;
+  }
+
+  // Helper to extract column cells from a single content line
+  const extractLineCells = (line: string): string[] => {
+    const trimmed = line.trim();
+    const pipeChar = trimmed.startsWith('|') ? '|' : trimmed.startsWith('│') ? '│' : '║';
+    const segments = trimmed.split(pipeChar);
+
+    if (segments.length === numCols + 2) {
+      return segments.slice(1, -1).map(s => s.trim());
+    }
+
+    // Positional fallback
+    const cells: string[] = [];
+    for (let c = 0; c < numCols; c++) {
+      const start = colIndices[c] + 1;
+      const end = colIndices[c + 1] !== undefined ? colIndices[c + 1] : line.length - 1;
+      if (start < line.length) {
+        cells.push(line.substring(start, Math.min(end, line.length)).trim());
+      } else {
+        cells.push('');
+      }
+    }
+    return cells;
+  };
+
+  const rows: { isHeader: boolean; cells: string[] }[] = [];
+
+  // Check if rows are delimited by interior borders
+  const hasInteriorRowBorders = borderIdxs.length > 3;
+
+  if (hasInteriorRowBorders || borderIdxs.length === 3) {
+    // There is a header section: between borderIdxs[0] and borderIdxs[1]
+    const headerLines = lines.slice(borderIdxs[0] + 1, borderIdxs[1]);
+    if (headerLines.length === 0) return null;
+
+    const headerColLines: string[][] = Array.from({ length: numCols }, () => []);
+    for (const hLine of headerLines) {
+      const cells = extractLineCells(hLine);
+      for (let c = 0; c < numCols; c++) {
+        if (cells[c]) headerColLines[c].push(cells[c]);
+      }
+    }
+    const headerCells = headerColLines.map(col => col.join(' ').replace(/\s+/g, ' ').replace(/(?<!\\)\|/g, '\\|'));
+    rows.push({ isHeader: true, cells: headerCells });
+
+    // Body rows
+    if (hasInteriorRowBorders) {
+      // Each section between borderIdxs[b] and borderIdxs[b+1] is a row
+      for (let b = 1; b < borderIdxs.length - 1; b++) {
+        const bodySectionLines = lines.slice(borderIdxs[b] + 1, borderIdxs[b + 1]);
+        if (bodySectionLines.length === 0) continue;
+
+        const rowColLines: string[][] = Array.from({ length: numCols }, () => []);
+        for (const line of bodySectionLines) {
+          const cells = extractLineCells(line);
+          for (let c = 0; c < numCols; c++) {
+            if (cells[c]) rowColLines[c].push(cells[c]);
+          }
+        }
+        const rowCells = rowColLines.map(col => col.join(' ').replace(/\s+/g, ' ').replace(/(?<!\\)\|/g, '\\|'));
+        if (rowCells.some(c => c.length > 0)) {
+          rows.push({ isHeader: false, cells: rowCells });
+        }
+      }
+    } else {
+      // borderIdxs.length === 3: No interior borders in body
+      const bodyLines = lines.slice(borderIdxs[1] + 1, borderIdxs[2]);
+      let currentBodyRow: string[][] | null = null;
+
+      for (const line of bodyLines) {
+        const cells = extractLineCells(line);
+        const hasContent = cells.some(c => c.length > 0);
+        if (!hasContent) continue;
+
+        const isContinuation = currentBodyRow !== null && cells[0] === '' && cells.slice(1).some(c => c.length > 0);
+
+        if (isContinuation && currentBodyRow) {
+          // Append to current row
+          for (let c = 0; c < numCols; c++) {
+            if (cells[c]) currentBodyRow[c].push(cells[c]);
+          }
+        } else {
+          // Commit previous row if exists
+          if (currentBodyRow) {
+            const rowCells = currentBodyRow.map(col => col.join(' ').replace(/\s+/g, ' ').replace(/(?<!\\)\|/g, '\\|'));
+            rows.push({ isHeader: false, cells: rowCells });
+          }
+          currentBodyRow = Array.from({ length: numCols }, (_, idx) => (cells[idx] ? [cells[idx]] : []));
+        }
+      }
+
+      if (currentBodyRow) {
+        const rowCells = currentBodyRow.map(col => col.join(' ').replace(/\s+/g, ' ').replace(/(?<!\\)\|/g, '\\|'));
+        rows.push({ isHeader: false, cells: rowCells });
+      }
+    }
+  } else {
+    // Only 2 borders (top and bottom) -> first line is header, subsequent lines are body rows
+    const allContentLines = lines.slice(1, lines.length - 1);
+    if (allContentLines.length === 0) return null;
+
+    const firstCells = extractLineCells(allContentLines[0]).map(c => c.replace(/(?<!\\)\|/g, '\\|'));
+    rows.push({ isHeader: true, cells: firstCells });
+
+    for (let i = 1; i < allContentLines.length; i++) {
+      const cells = extractLineCells(allContentLines[i]).map(c => c.replace(/(?<!\\)\|/g, '\\|'));
+      if (cells.some(c => c.length > 0)) {
+        rows.push({ isHeader: false, cells });
+      }
+    }
+  }
+
+  if (rows.length < 1) return null;
+
+  const header = rows[0];
+  const body = rows.slice(1);
+
+  const headerCells = header.cells.map((c, idx) => c || `Col ${idx + 1}`);
+  const separatorCells = headerCells.map(() => '---');
+
+  const mdLines: string[] = [];
+  mdLines.push(`| ${headerCells.join(' | ')} |`);
+  mdLines.push(`| ${separatorCells.join(' | ')} |`);
+
+  for (const row of body) {
+    const rowCells = Array.from({ length: numCols }, (_, idx) => row.cells[idx] || '');
+    mdLines.push(`| ${rowCells.join(' | ')} |`);
+  }
+
+  return mdLines.join('\n');
+}
+
+/**
+ * Converts all ASCII and Unicode grid tables in a markdown string into standard Markdown tables.
+ */
+export function convertGridTables(text: string): { result: string; count: number } {
+  const lines = text.split('\n');
+  const resultLines: string[] = [];
+  let count = 0;
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (isGridBorderLine(line)) {
+      // Potential grid table start
+      const tableCandidateLines: string[] = [line];
+      let j = i + 1;
+
+      while (j < lines.length) {
+        const nextLine = lines[j];
+        if (isGridBorderLine(nextLine) || isGridContentLine(nextLine)) {
+          tableCandidateLines.push(nextLine);
+          if (isGridBorderLine(nextLine)) {
+            // Check if next line is not a content line
+            if (j + 1 >= lines.length || (!isGridContentLine(lines[j + 1]) && !isGridBorderLine(lines[j + 1]))) {
+              j++;
+              break;
+            }
+          }
+          j++;
+        } else {
+          break;
+        }
+      }
+
+      const parsed = parseGridTable(tableCandidateLines);
+      if (parsed) {
+        count++;
+        resultLines.push(parsed);
+        i = j;
+        continue;
+      }
+    }
+
+    resultLines.push(line);
+    i++;
+  }
+
+  return { result: resultLines.join('\n'), count };
+}
+
+/**
  * Masks code blocks, inline code, and protected regions so regex transforms
  * do not alter code snippets or existing formulas.
  */
 class TokenMasker {
   private tokens: MaskedToken[] = [];
   private counter = 0;
+  public tablesConverted = 0;
 
-  mask(text: string): string {
+  mask(text: string, convertGridTablesEnabled = true): string {
     this.tokens = [];
     this.counter = 0;
+    this.tablesConverted = 0;
 
-    // 1. Mask fenced code blocks: ``` ... ``` and ~~~ ... ~~~
-    let masked = text.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g, (match) => {
+    // 1. Process fenced code blocks: ``` ... ``` and ~~~ ... ~~~
+    let masked = text.replace(/(```([\w-]*)\n([\s\S]*?)\n```|~~~([\w-]*)\n([\s\S]*?)\n~~~)/g, (fullMatch, _block, lang1, content1, lang2, content2) => {
+      const lang = (lang1 || lang2 || '').trim().toLowerCase();
+      const content = (content1 !== undefined ? content1 : content2 || '').trim();
+
+      // Check if this is a table inside a code block
+      const nonCodeLangs = ['', 'text', 'plaintext', 'ascii', 'markdown', 'md', 'table', 'grid'];
+      if (convertGridTablesEnabled && nonCodeLangs.includes(lang)) {
+        // Check if content is a Grid Table
+        const parsedGrid = parseGridTable(content.split('\n'));
+        if (parsedGrid) {
+          this.tablesConverted++;
+          return parsedGrid;
+        }
+
+        // Check if content is already a Markdown Pipe Table
+        if (isMarkdownPipeTable(content)) {
+          this.tablesConverted++;
+          return content;
+        }
+      }
+
+      // Otherwise, mask as protected code block
+      const placeholder = `%%OB_MASKED_BLOCK_${this.counter++}%%`;
+      this.tokens.push({ placeholder, original: fullMatch });
+      return placeholder;
+    });
+
+    // Handle any remaining single-line fenced blocks
+    masked = masked.replace(/(```[\s\S]*?```|~~~[\s\S]*?~~~)/g, (match) => {
       const placeholder = `%%OB_MASKED_BLOCK_${this.counter++}%%`;
       this.tokens.push({ placeholder, original: match });
       return placeholder;
@@ -301,6 +607,107 @@ export function fixHeadings(text: string): string {
 }
 
 /**
+ * Enforces a strict heading hierarchy with at most one H1 (# Heading) per document.
+ * The first H1 is retained as the note title, while any subsequent H1s
+ * are demoted to H2 (##). Immediate child headings under demoted H1s are adjusted
+ * proportionally to preserve clean hierarchical nesting.
+ */
+export function enforceSingleH1(text: string): { result: string; count: number } {
+  const lines = text.split('\n');
+  let firstH1Index = -1;
+
+  // 1. First pass: find the index of the first H1
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^#\s+(.*)$/);
+    if (match) {
+      firstH1Index = i;
+      break;
+    }
+  }
+
+  // If there's 0 or 1 H1, check if there are any subsequent H1s
+  if (firstH1Index === -1) {
+    return { result: text, count: 0 };
+  }
+
+  // 2. Partition into sections: Section 0 is before second H1, Section 1..N start with a subsequent H1
+  interface Section {
+    startLineIdx: number;
+    endLineIdx: number;
+    isDemoted: boolean;
+    hasLevel2Child: boolean;
+  }
+
+  const sections: Section[] = [];
+  let currentSection: Section = {
+    startLineIdx: 0,
+    endLineIdx: lines.length - 1,
+    isDemoted: false,
+    hasLevel2Child: false,
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i].match(/^(#{1,6})\s+(.*)$/);
+    if (match) {
+      const level = match[1].length;
+      if (level === 1 && i > firstH1Index) {
+        // Start of a new demoted section
+        currentSection.endLineIdx = i - 1;
+        sections.push(currentSection);
+        currentSection = {
+          startLineIdx: i,
+          endLineIdx: lines.length - 1,
+          isDemoted: true,
+          hasLevel2Child: false,
+        };
+      } else if (level === 2 && currentSection.isDemoted) {
+        currentSection.hasLevel2Child = true;
+      }
+    }
+  }
+  sections.push(currentSection);
+
+  // If no demoted sections, return original
+  if (sections.length === 1 && !sections[0].isDemoted) {
+    return { result: text, count: 0 };
+  }
+
+  // 3. Second pass: transform lines according to section rules
+  let count = 0;
+  const resultLines: string[] = [];
+
+  for (const section of sections) {
+    for (let i = section.startLineIdx; i <= section.endLineIdx; i++) {
+      const line = lines[i];
+      const match = line.match(/^(#{1,6})\s+(.*)$/);
+
+      if (match && section.isDemoted) {
+        const level = match[1].length;
+        const content = match[2];
+
+        if (level === 1) {
+          // Demote subsequent H1 to H2
+          count++;
+          resultLines.push(`## ${content}`);
+        } else if (section.hasLevel2Child) {
+          // If this section has H2 children, shift all children by +1
+          count++;
+          const newLevel = Math.min(6, level + 1);
+          resultLines.push(`${'#'.repeat(newLevel)} ${content}`);
+        } else {
+          // Children are already level 3 (###) or deeper -> already valid children of H2
+          resultLines.push(line);
+        }
+      } else {
+        resultLines.push(line);
+      }
+    }
+  }
+
+  return { result: resultLines.join('\n'), count };
+}
+
+/**
  * Collapses 3 or more consecutive blank lines into 1 blank line (2 newlines).
  */
 export function collapseBlankLines(text: string): string {
@@ -372,6 +779,8 @@ export function cleanMarkdown(
         calloutsConverted: 0,
         mathConverted: 0,
         emphasisFixed: 0,
+        tablesConverted: 0,
+        headingsNormalized: 0,
       }
     };
   }
@@ -379,76 +788,92 @@ export function cleanMarkdown(
   const opts: CleanOptions = { ...DEFAULT_OPTIONS, ...options };
   const masker = new TokenMasker();
 
-  // 1. Mask code blocks & inline backticks
-  let text = masker.mask(input);
+  // 1. Mask code blocks & inline backticks (automatically unwraps tables inside code fences if convertGridTables is true)
+  let text = masker.mask(input, opts.convertGridTables);
+  let tablesConverted = masker.tablesConverted;
 
   let listsTightened = 0;
   let calloutsConverted = 0;
   let mathConverted = 0;
   let emphasisFixed = 0;
+  let headingsNormalized = 0;
 
-  // 2. Math delimiters (before callouts and emphasis)
+  // 2. Convert unfenced ASCII/Unicode grid tables to markdown tables
+  if (opts.convertGridTables) {
+    const res = convertGridTables(text);
+    text = res.result;
+    tablesConverted += res.count;
+  }
+
+  // 3. Math delimiters (before callouts and emphasis)
   if (opts.fixMathDelimiters) {
     const res = fixMathDelimiters(text);
     text = res.result;
     mathConverted = res.count;
   }
 
-  // 3. Headings
+  // 4. Headings: formatting space & spacing
   if (opts.fixHeadings) {
     text = fixHeadings(text);
   }
 
-  // 4. Callouts
+  // 5. Enforce single H1 and strict heading hierarchy
+  if (opts.enforceSingleH1) {
+    const res = enforceSingleH1(text);
+    text = res.result;
+    headingsNormalized = res.count;
+  }
+
+  // 6. Callouts
   if (opts.convertCallouts) {
     const res = convertCallouts(text);
     text = res.result;
     calloutsConverted = res.count;
   }
 
-  // 5. Emphasis spacing
+  // 7. Emphasis spacing
   if (opts.fixEmphasisSpacing) {
     const res = fixEmphasisSpacing(text);
     text = res.result;
     emphasisFixed = res.count;
   }
 
-  // 6. Tighten loose lists
+  // 8. Tighten loose lists
   if (opts.tightenLists) {
     const res = tightenLists(text);
     text = res.result;
     listsTightened = res.count;
   }
 
-  // 7. Table spacing
+  // 9. Table spacing
   if (opts.fixTableSpacing) {
     text = fixTableSpacing(text);
   }
 
-  // 8. Quote spacing
+  // 10. Quote spacing
   if (opts.fixQuoteSpacing) {
     text = fixQuoteSpacing(text);
   }
 
-  // 9. Normalize task lists
+  // 11. Normalize task lists
   if (opts.normalizeTaskLists) {
     text = normalizeTaskLists(text);
   }
 
-  // 10. Collapse blank lines
+  // 12. Collapse blank lines
   if (opts.collapseBlankLines) {
     text = collapseBlankLines(text);
   }
 
-  // 11. Trim trailing whitespace
+  // 13. Trim trailing whitespace
   if (opts.trimTrailingSpaces) {
     text = trimTrailingSpaces(text);
   }
 
-  // 12. Final trim of excessive leading/trailing empty lines of the document
+  // 14. Final trim of excessive leading/trailing empty lines of the document
   text = text.trim() + '\n';
 
-  // 13. Restore masked code blocks and inline backticks
+  // 15. Restore masked code blocks and inline backticks
   const cleaned = masker.unmask(text);
 
   // Calculate statistics
@@ -472,6 +897,8 @@ export function cleanMarkdown(
     calloutsConverted,
     mathConverted,
     emphasisFixed,
+    tablesConverted,
+    headingsNormalized,
   };
 
   return { cleaned, stats };

@@ -687,35 +687,216 @@ textarea, input, select {
   color: var(--text-primary);
 }
 
-/* Obsidian Code Blocks */
+/* Obsidian Code Blocks & PrismJS Syntax Highlighting */
 .obsidian-code-block {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  margin: 14px 0;
+  border-radius: var(--radius-md);
+  margin: 16px 0;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: var(--transition-fast);
+}
+
+.obsidian-code-block:hover {
+  border-color: rgba(139, 92, 246, 0.3);
 }
 
 .obsidian-code-header {
   background-color: var(--bg-tertiary);
-  padding: 4px 12px;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  user-select: none;
+}
+
+.obsidian-code-lang {
   font-size: 11px;
   font-family: var(--font-mono);
-  color: var(--text-secondary);
+  font-weight: 600;
+  color: var(--accent);
   text-transform: uppercase;
-  border-bottom: 1px solid var(--border-subtle);
+  letter-spacing: 0.05em;
+}
+
+.obsidian-code-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-family: var(--font-sans);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+
+.obsidian-code-copy-btn:hover {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+  border-color: var(--border-subtle);
+}
+
+.obsidian-code-copy-btn.copied {
+  color: var(--success);
+  font-weight: 600;
 }
 
 .obsidian-code-block pre {
-  padding: 14px;
+  margin: 0;
+  padding: 16px;
   overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  tab-size: 2;
+  background-color: transparent;
 }
 
 .obsidian-code-block code {
   font-family: var(--font-mono);
   font-size: 12.5px;
-  line-height: 1.5;
-  color: #e2e8f0;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre;
+}
+
+/* Syntax Highlighting Colors - Dark Mode */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #64748b;
+  font-style: italic;
+}
+
+.token.punctuation {
+  color: #94a3b8;
+}
+
+.token.property,
+.token.tag,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #f43f5e;
+}
+
+.token.boolean,
+.token.number {
+  color: #f97316;
+  font-weight: 500;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #10b981;
+}
+
+.token.operator,
+.token.entity,
+.token.url,
+.language-css .token.string,
+.style .token.string {
+  color: #38bdf8;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #c084fc;
+  font-weight: 600;
+}
+
+.token.function,
+.token.class-name {
+  color: #60a5fa;
+  font-weight: 600;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #fbbf24;
+}
+
+.token.important,
+.token.bold {
+  font-weight: bold;
+}
+
+.token.italic {
+  font-style: italic;
+}
+
+/* Syntax Highlighting Colors - Light Mode Overrides */
+[data-theme='light'] .token.comment,
+[data-theme='light'] .token.prolog,
+[data-theme='light'] .token.doctype,
+[data-theme='light'] .token.cdata {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+[data-theme='light'] .token.punctuation {
+  color: #64748b;
+}
+
+[data-theme='light'] .token.property,
+[data-theme='light'] .token.tag,
+[data-theme='light'] .token.constant,
+[data-theme='light'] .token.symbol,
+[data-theme='light'] .token.deleted {
+  color: #e11d48;
+}
+
+[data-theme='light'] .token.boolean,
+[data-theme='light'] .token.number {
+  color: #ea580c;
+  font-weight: 500;
+}
+
+[data-theme='light'] .token.selector,
+[data-theme='light'] .token.attr-name,
+[data-theme='light'] .token.string,
+[data-theme='light'] .token.char,
+[data-theme='light'] .token.builtin,
+[data-theme='light'] .token.inserted {
+  color: #059669;
+}
+
+[data-theme='light'] .token.operator,
+[data-theme='light'] .token.entity,
+[data-theme='light'] .token.url {
+  color: #0284c7;
+}
+
+[data-theme='light'] .token.atrule,
+[data-theme='light'] .token.attr-value,
+[data-theme='light'] .token.keyword {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+[data-theme='light'] .token.function,
+[data-theme='light'] .token.class-name {
+  color: #2563eb;
+  font-weight: 600;
+}
+
+[data-theme='light'] .token.regex,
+[data-theme='light'] .token.important,
+[data-theme='light'] .token.variable {
+  color: #d97706;
 }
 
 /* Obsidian Tables */

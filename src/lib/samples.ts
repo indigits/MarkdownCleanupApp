@@ -130,5 +130,57 @@ Let \\( |s\\rangle \\) denote the uniform superposition state.
 
 ** Final Conclusion **: Near-term NISQ applications focus on chemistry simulations and quantum annealing.
 `
+  },
+  {
+    id: 'gemini-architecture-matrix',
+    title: 'Gemini Architecture Matrix & Tables',
+    source: 'Google Gemini Architecture Export',
+    markdown: `# The Partial Hydration Dilemma
+
+The partial hydration dilemma is the architectural deadlock between Domain-Driven Design's mandate for **aggregate integrity** and relational database **access-path efficiency**.
+
+# The Failure Modes of Naive Solutions
+
+\`\`\`
++--------------------------+-------------------------------------------------------------+
+| Naive Workaround         | Failure Mechanism                                           |
++--------------------------+-------------------------------------------------------------+
+| Nullable Domain Fields   | Fields not fetched are set to null. Methods must guess      |
+|                          | whether an attribute is genuinely null or simply omitted,   |
+|                          | destroying the entity's ability to protect invariants.      |
++--------------------------+-------------------------------------------------------------+
+| Dynamic Proxies &        | Property getters trigger secondary database queries on      |
+| Lazy-Loading             | access. This creates hidden I/O within domain logic, N+1    |
+|                          | query cascades, and breaks offline unit testability.        |
++--------------------------+-------------------------------------------------------------+
+| Specific "Hydrated"      | Creating PartialMerchant, BasicMerchant, and FullMerchant   |
+| Variations               | causes an exponential explosion of classes with duplicate   |
+|                          | business logic and unclear responsibilities.                |
++--------------------------+-------------------------------------------------------------+
+\`\`\`
+
+# Architectural Trade-Off Matrix
+
+\`\`\`
++----------------------------+-----------------------+---------------------+-------------------------+
+| Approach                   | Aggregate Integrity   | Query Efficiency    | Complexity Cost         |
++----------------------------+-----------------------+---------------------+-------------------------+
+| Classical Repository       | High                  | Very Low            | Low                     |
+| (Full Hydration)           | (No partial state)    | (SELECT * everywhere)| (Simple abstractions)   |
++----------------------------+-----------------------+---------------------+-------------------------+
+| CQRS Separation            | High                  | High                | Medium                  |
+| (Bypass for Reads)         | (Entities for writes) | (Targeted DTO reads)| (Two data paths)        |
++----------------------------+-----------------------+---------------------+-------------------------+
+| Aggregate Decomposition    | High                  | High                | Medium                  |
+| (Shared Table Pattern)     | (Fully valid models)  | (Narrow projections)| (Multiple entity models)|
++----------------------------+-----------------------+---------------------+-------------------------+
+| Task-Specific Commands     | High                  | High                | Medium                  |
+| (Narrow Command Models)    | (Scoped invariants)   | (Single-row slices) | (Granular repositories) |
++----------------------------+-----------------------+---------------------+-------------------------+
+| Functional Transition      | High                  | Maximum             | Low/Medium              |
+| (Pure Functions)           | (Explicit arguments)  | (Ad-hoc projections)| (No OOP encapsulation)  |
++----------------------------+-----------------------+---------------------+-------------------------+
+\`\`\`
+`
   }
 ];

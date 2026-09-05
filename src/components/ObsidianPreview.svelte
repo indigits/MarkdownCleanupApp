@@ -4,9 +4,39 @@
   export let markdown: string = '';
 
   $: renderedHtml = parseMarkdownToHtml(markdown);
+
+  function codeCopyAction(node: HTMLElement) {
+    function handleClick(event: MouseEvent) {
+      const target = event.target as HTMLElement;
+      const copyBtn = target.closest('.obsidian-code-copy-btn') as HTMLButtonElement | null;
+      if (!copyBtn) return;
+
+      const code = copyBtn.getAttribute('data-code') || '';
+      if (!code) return;
+
+      navigator.clipboard.writeText(code).then(() => {
+        const span = copyBtn.querySelector('span');
+        const originalText = span ? span.textContent : 'Copy';
+        copyBtn.classList.add('copied');
+        if (span) span.textContent = 'Copied!';
+
+        setTimeout(() => {
+          copyBtn.classList.remove('copied');
+          if (span) span.textContent = originalText;
+        }, 2000);
+      }).catch(() => {});
+    }
+
+    node.addEventListener('click', handleClick);
+    return {
+      destroy() {
+        node.removeEventListener('click', handleClick);
+      }
+    };
+  }
 </script>
 
-<div class="preview-wrapper">
+<div class="preview-wrapper" use:codeCopyAction>
   {#if !markdown.trim()}
     <div class="obsidian-empty-state">
       <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color: var(--accent); opacity: 0.7;">
@@ -24,3 +54,4 @@
     </div>
   {/if}
 </div>
+
