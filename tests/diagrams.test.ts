@@ -1,5 +1,11 @@
-import { describe, it, expect } from 'vitest';
+// @vitest-environment happy-dom
+import { describe, it, expect, beforeAll } from 'vitest';
+import mermaid from 'mermaid';
 import { DIAGRAM_TEST_BED } from './fixtures/diagramTestBed';
+
+beforeAll(() => {
+  mermaid.initialize({ startOnLoad: false, suppressErrorRendering: true });
+});
 
 describe('ASCII-to-Mermaid Test Bed Validation', () => {
   it('loads all test cases in the diagram test bed', () => {
@@ -78,15 +84,80 @@ describe('ASCII-to-Mermaid Test Bed Validation', () => {
             .filter(line => /^[a-zA-Z0-9_]+(\[|\{|\(\[|\[\[|\()".*"(\]|\}|\)\]|\]\]|\))$/.test(line));
           expect(nodeDefLines.length).toBe(testCase.nodeCount);
 
-          // Verify edge count matches expected
-          const edgeLines = converted.result
-            .split('\n')
-            .map(l => l.trim())
-            .filter(line => line.includes('-->') || line.includes('<-->'));
-          expect(edgeLines.length).toBe(testCase.edgeCount);
+          // Verify Mermaid parse validity directly with Mermaid.js engine
+          const rawMermaid = converted.result
+            .replace(/^```mermaid\n/, '')
+            .replace(/\n```$/, '');
+          await expect(mermaid.parse(rawMermaid)).resolves.not.toThrow();
         });
       }
     }
   });
+
+  describe('User Real-World ASCII Diagram Cases', () => {
+    it('converts aggregate decomposition diagram with backticks and loads annotation to valid Mermaid', async () => {
+      const { convertAsciiToMermaid } = await import('../src/lib/diagramConverter');
+      const input = [
+        '                  ┌─────────────────────────────────────┐',
+        '                  │          `merchants` Table          │',
+        '                  │ (Identity, KYC, Billing, Addresses) │',
+        '                  └──────────────────┬──────────────────┘',
+        '                                     │',
+        '        ┌────────────────────────────┼────────────────────────────┐',
+        '        ▼                            ▼                            ▼',
+        '┌───────────────────┐      ┌────────────────────┐      ┌───────────────────┐',
+        '│ MerchantRiskState │      │  MerchantPayout    │      │  MerchantProfile  │',
+        '│ Aggregate         │      │  Aggregate         │      │  Aggregate        │',
+        '│ • status          │      │  • bank_account_id │      │  • legal_name     │',
+        '│ • risk_score      │      │  • payout_schedule │      │  • contact_email  │',
+        '│ • held_reason     │      │  • auto_sweep      │      │  • dba_name       │',
+        '└───────────────────┘      └────────────────────┘      └───────────────────┘',
+        ' (Loads 3 columns)          (Loads 3 columns)           (Loads 3 columns)',
+      ].join('\n');
+
+      const converted = convertAsciiToMermaid(input);
+      expect(converted.count).toBe(1);
+      expect(converted.result).toContain('flowchart TD');
+      expect(converted.result).toContain("'merchants' Table");
+      expect(converted.result).not.toContain('`merchants`');
+
+      const rawMermaid = converted.result
+        .replace(/^```mermaid\n/, '')
+        .replace(/\n```$/, '');
+      await expect(mermaid.parse(rawMermaid)).resolves.not.toThrow();
+    });
+
+    it('converts architectural tension comparison diagram without creating a fake cross edge for vs.', async () => {
+      const { convertAsciiToMermaid } = await import('../src/lib/diagramConverter');
+      const input = [
+        '       ┌────────────────────────────────────────────────────────┐',
+        '       │                 THE ARCHITECTURAL TENSION              │',
+        '       └───────────────────────────┬────────────────────────────┘',
+        '                                   │',
+        '         ┌─────────────────────────┴─────────────────────────┐',
+        '         ▼                                                   ▼',
+        '┌─────────────────────────────────┐       ┌─────────────────────────────────┐',
+        '│       Domain Invariants         │       │       Storage Efficiency        │',
+        '│ • Complete internal state       │  vs.  │ • Selective column projection   │',
+        '│ • No undefined/null traps       │       │ • Index-Only scans (B-Tree)     │',
+        '│ • Enforces business rules       │       │ • Minimal I/O and wire transfer │',
+        '└─────────────────────────────────┘       └─────────────────────────────────┘',
+      ].join('\n');
+
+      const converted = convertAsciiToMermaid(input);
+      expect(converted.count).toBe(1);
+      expect(converted.result).toContain('flowchart TD');
+      expect(converted.result).toContain('tension --> invariants');
+      expect(converted.result).toContain('tension --> storage');
+      expect(converted.result).not.toContain('<-->|vs.|');
+      expect(converted.result).not.toContain('invariants <-->');
+
+      const rawMermaid = converted.result
+        .replace(/^```mermaid\n/, '')
+        .replace(/\n```$/, '');
+      await expect(mermaid.parse(rawMermaid)).resolves.not.toThrow();
+    });
+  });
 });
+
 

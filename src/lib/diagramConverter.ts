@@ -193,7 +193,16 @@ export function generateNodeId(label: string, existingIds: Set<string>): string 
     }
   }
 
-  // Ensure uniqueness
+  // Ensure uniqueness and avoid reserved Mermaid keywords
+  const reservedKeywords = new Set([
+    'subgraph', 'end', 'style', 'class', 'classdef', 'click', 'callback',
+    'linkstyle', 'interpolate', 'flowchart', 'graph', 'direction', 'node', 'default'
+  ]);
+
+  if (reservedKeywords.has(base.toLowerCase())) {
+    base = `n_${base}`;
+  }
+
   let candidate = base;
   let counter = 1;
   while (existingIds.has(candidate)) {
@@ -577,27 +586,6 @@ export function extractEdges(lines: string[], nodes: DiagramNode[]): DiagramEdge
         addEdge(leftNode.id, rightNode.id);
       }
     }
-
-    // Check for "vs." Comparison connection
-    const vsMatch = line.match(/\s+vs\.?\s+/i);
-    if (vsMatch && vsMatch.index !== undefined) {
-      const vsCol = vsMatch.index;
-      let leftNode: DiagramNode | null = null;
-      let rightNode: DiagramNode | null = null;
-
-      for (const n of nodes) {
-        if (n.right <= vsCol && Math.abs(n.centerY - r) <= 3) {
-          if (!leftNode || n.right > leftNode.right) leftNode = n;
-        }
-        if (n.left >= vsCol && Math.abs(n.centerY - r) <= 3) {
-          if (!rightNode || n.left < rightNode.left) rightNode = n;
-        }
-      }
-
-      if (leftNode && rightNode) {
-        addEdge(leftNode.id, rightNode.id, 'vs.', 'bidirectional');
-      }
-    }
   }
 
   // 3. Scan for Loopbacks / Bottom Branching: e.g. └───────► (re-draft) ───────► (Back to Draft)
@@ -754,6 +742,9 @@ function findHorizontalEndpoints(
     endpoints.push({ col: startCol });
   }
 
+  // Sort endpoints from left to right so branches/edges are emitted in visual reading order
+  endpoints.sort((a, b) => a.col - b.col);
+
   return endpoints;
 }
 
@@ -820,6 +811,50 @@ export function inferDirection(nodes: DiagramNode[], edges: DiagramEdge[]): 'TD'
 }
 
 /**
+ * Sanitizes node labels for valid Mermaid.js string literals.
+ * Converts double quotes and backticks to single quotes, preserves safe HTML tags,
+ * and escapes raw < and > to HTML entities.
+ */
+export function sanitizeMermaidLabel(label: string): string {
+  if (!label) return '';
+  return label
+    .replace(/"/g, "'")
+    .replace(/`/g, "'")
+    .replace(/<br\s*\/?>/gi, '__MERMAID_BR__')
+    .replace(/<em>/gi, '__MERMAID_EM_OPEN__')
+    .replace(/<\/em>/gi, '__MERMAID_EM_CLOSE__')
+    .replace(/<b>/gi, '__MERMAID_B_OPEN__')
+    .replace(/<\/b>/gi, '__MERMAID_B_CLOSE__')
+    .replace(/<i>/gi, '__MERMAID_I_OPEN__')
+    .replace(/<\/i>/gi, '__MERMAID_I_CLOSE__')
+    .replace(/<code>/gi, '__MERMAID_CODE_OPEN__')
+    .replace(/<\/code>/gi, '__MERMAID_CODE_CLOSE__')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/__MERMAID_BR__/g, '<br/>')
+    .replace(/__MERMAID_EM_OPEN__/g, '<em>')
+    .replace(/__MERMAID_EM_CLOSE__/g, '</em>')
+    .replace(/__MERMAID_B_OPEN__/g, '<b>')
+    .replace(/__MERMAID_B_CLOSE__/g, '</b>')
+    .replace(/__MERMAID_I_OPEN__/g, '<i>')
+    .replace(/__MERMAID_I_CLOSE__/g, '</i>')
+    .replace(/__MERMAID_CODE_OPEN__/g, '<code>')
+    .replace(/__MERMAID_CODE_CLOSE__/g, '</code>');
+}
+
+/**
+ * Sanitizes edge labels so pipes and quotes do not break Mermaid syntax.
+ */
+export function sanitizeMermaidEdgeLabel(label: string): string {
+  if (!label) return '';
+  return label
+    .replace(/\|/g, '/')
+    .replace(/"/g, "'")
+    .replace(/`/g, "'")
+    .trim();
+}
+
+/**
  * Converts parsed diagram AST into Mermaid syntax string.
  */
 export function renderMermaidFlowchart(parsed: ParsedDiagram): string {
@@ -830,7 +865,7 @@ export function renderMermaidFlowchart(parsed: ParsedDiagram): string {
   // 1. Render Node Definitions
   for (const node of parsed.nodes) {
     let nodeSyntax = '';
-    const safeLabel = node.label.replace(/"/g, "'");
+    const safeLabel = sanitizeMermaidLabel(node.label);
 
     switch (node.shape) {
       case 'subroutine':
@@ -855,7 +890,8 @@ export function renderMermaidFlowchart(parsed: ParsedDiagram): string {
     lines.push('');
     for (const edge of parsed.edges) {
       let edgeSyntax = '';
-      const labelPart = edge.label ? `|${edge.label}|` : '';
+      const safeEdgeLabel = edge.label ? sanitizeMermaidEdgeLabel(edge.label) : '';
+      const labelPart = safeEdgeLabel ? `|${safeEdgeLabel}|` : '';
 
       if (edge.style === 'bidirectional') {
         edgeSyntax = `    ${edge.from} <-->${labelPart} ${edge.to}`;

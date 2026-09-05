@@ -62,7 +62,7 @@ export const DIAGRAM_TEST_BED: DiagramTestCase[] = [
       '    read["Read / Projection"]',
       '    task["Task-Scoped Aggregate<br/>• Focused state<br/>• Enforces 1 invariant"]',
       '    dto["Direct DTO Projection<br/>• Raw optimized SQL<br/>• Index-only execution"]',
-      '    db["Single Database Table<br/>(e.g., `merchants`)"]',
+      '    db["Single Database Table<br/>(e.g., \'merchants\')"]',
       '',
       '    req --> mut',
       '    req --> read',
@@ -103,7 +103,7 @@ export const DIAGRAM_TEST_BED: DiagramTestCase[] = [
     expectedMermaid: [
       '```mermaid',
       'flowchart TD',
-      '    table["`merchants` Table<br/>(Identity, KYC, Billing, Addresses)"]',
+      '    table["\'merchants\' Table<br/>(Identity, KYC, Billing, Addresses)"]',
       '    risk["MerchantRiskState Aggregate<br/>• status<br/>• risk_score<br/>• held_reason<br/><em>(Loads 3 columns)</em>"]',
       '    payout["MerchantPayout Aggregate<br/>• bank_account_id<br/>• payout_schedule<br/>• auto_sweep<br/><em>(Loads 3 columns)</em>"]',
       '    profile["MerchantProfile Aggregate<br/>• legal_name<br/>• contact_email<br/>• dba_name<br/><em>(Loads 3 columns)</em>"]',
@@ -147,12 +147,11 @@ export const DIAGRAM_TEST_BED: DiagramTestCase[] = [
       '',
       '    tension --> invariants',
       '    tension --> storage',
-      '    invariants <-->|vs.| storage',
       '```',
     ].join('\n'),
     nodeCount: 3,
-    edgeCount: 3,
-    features: ['comparison_vs_label', 'bidirectional_relation', 'wide_root_box'],
+    edgeCount: 2,
+    features: ['comparison_structure', 'wide_root_box', '1_to_2_split'],
   },
 
   {

@@ -875,7 +875,7 @@ The partial hydration dilemma is not an unavoidable database limitation; it is a
     // All code blocks and diagrams preserved
     expect(cleaned).toContain('THE ARCHITECTURAL TENSION');
     expect(cleaned).toContain('Incoming Request');
-    expect(cleaned).toContain('`merchants` Table');
+    expect(cleaned).toContain("'merchants' Table");
     expect(cleaned).toContain('```sql\nUPDATE merchants');
     expect(cleaned).toContain('```typescript\n// Command Model:');
     expect(cleaned).toContain('```go\n// Pure domain rule');
