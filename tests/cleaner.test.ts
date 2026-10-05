@@ -217,6 +217,20 @@ describe('Markdown Cleaner - Bold & Italic Whitespace', () => {
     expect(result).toBe('"**bold in quotes**" and (*italic in parens*) and **bold**, **bold 2**! **bold 3**?');
     expect(count).toBe(5);
   });
+
+  it('handles italics inside bold text with triple asterisks properly', () => {
+    const input = [
+      '**1. Continuous Optimization: Boyd & Vandenberghe, *Convex Optimization***',
+      '**2. High-Dimensional Geometry & Streaming: Blum, Hopcroft, & Kannan, *Foundations of Data Science***',
+      '**3. Probabilistic & Randomized Methods: Mitzenmacher & Upfal, *Probability and Computing* (2nd Edition)**',
+    ].join('\n');
+
+    const { cleaned, stats } = cleanMarkdown(input);
+    expect(cleaned).toContain('**1. Continuous Optimization: Boyd & Vandenberghe, *Convex Optimization***');
+    expect(cleaned).toContain('**2. High-Dimensional Geometry & Streaming: Blum, Hopcroft, & Kannan, *Foundations of Data Science***');
+    expect(cleaned).toContain('**3. Probabilistic & Randomized Methods: Mitzenmacher & Upfal, *Probability and Computing* (2nd Edition)**');
+    expect(stats.emphasisFixed).toBe(0);
+  });
 });
 
 describe('Markdown Cleaner - Headings & Blank Lines', () => {

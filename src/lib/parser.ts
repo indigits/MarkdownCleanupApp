@@ -451,16 +451,45 @@ export function renderInline(text: string): string {
 
   let escaped = escapeHtml(masked);
 
-  // 3. Bold + Italic: ***text*** or ___text___
-  escaped = escaped.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
+  // 3. Triple asterisks/underscores: ***text*** or ___text___
+  escaped = escaped.replace(/\*\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*\*/g, '<strong><em>$1</em></strong>');
+  escaped = escaped.replace(/___([^\s_](?:[^_]*?[^\s_])?)___/g, '<strong><em>$1</em></strong>');
 
-  // 4. Bold: **text** or __text__
-  escaped = escaped.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-  escaped = escaped.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  // 4. Bold with trailing italic: **prefix *italic*** -> <strong>prefix <em>italic</em></strong>
+  escaped = escaped.replace(/\*\*([^*]+?)\*([^\s*](?:[^*]*?[^\s*])?)\*\*\*/g, '<strong>$1<em>$2</em></strong>');
+  escaped = escaped.replace(/__([^_]+?)_([^\s_](?:[^_]*?[^\s_])?)___/g, '<strong>$1<em>$2</em></strong>');
 
-  // 5. Italic: *text* or _text_
-  escaped = escaped.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-  escaped = escaped.replace(/_([^_]+)_/g, '<em>$1</em>');
+  // 5. Bold with leading italic: ***italic* suffix** -> <strong><em>italic</em> suffix</strong>
+  escaped = escaped.replace(/\*\*\*([^\s*](?:[^*]*?[^\s*])?)\*([^*]+?)\*\*/g, '<strong><em>$1</em>$2</strong>');
+  escaped = escaped.replace(/___([^\s_](?:[^_]*?[^\s_])?)_([^_]+?)__/g, '<strong><em>$1</em>$2</strong>');
+
+  // 6. Italic with trailing bold: *prefix **bold**** -> <em>prefix <strong>bold</strong></em>
+  escaped = escaped.replace(/(?<!\*)\*([^*]+?)\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*\*/g, '<em>$1<strong>$2</strong></em>');
+  escaped = escaped.replace(/(?<!_)_([^_]+?)__([^\s_](?:[^_]*?[^\s_])?)___/g, '<em>$1<strong>$2</strong></em>');
+
+  // 7. Italic with leading bold: ***bold** suffix* -> <em><strong>bold</strong> suffix</em>
+  escaped = escaped.replace(/\*\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*([^*]+?)\*(?!\*)/g, '<em><strong>$1</strong>$2</em>');
+  escaped = escaped.replace(/___([^\s_](?:[^_]*?[^\s_])?)__([^_]+?)_(?!_)/g, '<em><strong>$1</strong>$2</em>');
+
+  // 8. Standard Bold: **text** or __text__ (allowing single asterisks/underscores inside)
+  escaped = escaped.replace(/\*\*([^\s*](?:[^*]|\*(?!\*))*?[^\s*])\*\*/g, (_match, content) => {
+    const inner = content.replace(/(?<!\*)\*([^\s*](?:[^*]*?[^\s*])?)\*(?!\*)/g, '<em>$1</em>');
+    return `<strong>${inner}</strong>`;
+  });
+  escaped = escaped.replace(/__([^\s_](?:[^_]|_(?!_))*?[^\s_])__/g, (_match, content) => {
+    const inner = content.replace(/(?<!_)_([^\s_](?:[^_]*?[^\s_])?)_(?!_)/g, '<em>$1</em>');
+    return `<strong>${inner}</strong>`;
+  });
+
+  // 9. Standard Italic: *text* or _text_ (must not be adjacent to whitespace)
+  escaped = escaped.replace(/(?<!\*)\*([^\s*](?:[^*]*?[^\s*])?)\*(?!\*)/g, (_match, content) => {
+    const inner = content.replace(/\*\*([^\s*](?:[^*]*?[^\s*])?)\*\*/g, '<strong>$1</strong>');
+    return `<em>${inner}</em>`;
+  });
+  escaped = escaped.replace(/(?<!_)_([^\s_](?:[^_]*?[^\s_])?)_(?!_)/g, (_match, content) => {
+    const inner = content.replace(/__([^\s_](?:[^_]*?[^\s_])?)__/g, '<strong>$1</strong>');
+    return `<em>${inner}</em>`;
+  });
 
   // 6. Strikethrough: ~~text~~
   escaped = escaped.replace(/~~([^~]+)~~/g, '<del>$1</del>');

@@ -50,4 +50,27 @@ describe('Obsidian Previewer Parser & Math Rendering', () => {
     expect(html).toContain('<em>italic</em>');
     expect(html).toContain('A</annotation>');
   });
+
+  it('renders italics nested within bold text properly', () => {
+    const md1 = '**1. Continuous Optimization: Boyd & Vandenberghe, *Convex Optimization***';
+    expect(renderInline(md1)).toBe('<strong>1. Continuous Optimization: Boyd &amp; Vandenberghe, <em>Convex Optimization</em></strong>');
+
+    const md2 = '**2. High-Dimensional Geometry & Streaming: Blum, Hopcroft, & Kannan, *Foundations of Data Science***';
+    expect(renderInline(md2)).toBe('<strong>2. High-Dimensional Geometry &amp; Streaming: Blum, Hopcroft, &amp; Kannan, <em>Foundations of Data Science</em></strong>');
+
+    const md3 = '**3. Probabilistic & Randomized Methods: Mitzenmacher & Upfal, *Probability and Computing* (2nd Edition)**';
+    expect(renderInline(md3)).toBe('<strong>3. Probabilistic &amp; Randomized Methods: Mitzenmacher &amp; Upfal, <em>Probability and Computing</em> (2nd Edition)</strong>');
+
+    const md4 = '* **Continuous Optimization: *Convex Optimization* (Boyd & Vandenberghe)**';
+    expect(renderInline(md4)).toBe('* <strong>Continuous Optimization: <em>Convex Optimization</em> (Boyd &amp; Vandenberghe)</strong>');
+  });
+
+  it('renders all nested emphasis edge cases correctly', () => {
+    expect(renderInline('***Bold italic* at start of bold**')).toBe('<strong><em>Bold italic</em> at start of bold</strong>');
+    expect(renderInline('***Bold and italic entirely***')).toBe('<strong><em>Bold and italic entirely</em></strong>');
+    expect(renderInline('*Italic with **nested bold** inside*')).toBe('<em>Italic with <strong>nested bold</strong> inside</em>');
+    expect(renderInline('__Bold with _nested italic_ in underscores__')).toBe('<strong>Bold with <em>nested italic</em> in underscores</strong>');
+    expect(renderInline('_Italic with __nested bold__ in underscores_')).toBe('<em>Italic with <strong>nested bold</strong> in underscores</em>');
+    expect(renderInline('* *Sequence Flows* model strictly *within* a pool.')).toBe('* <em>Sequence Flows</em> model strictly <em>within</em> a pool.');
+  });
 });
